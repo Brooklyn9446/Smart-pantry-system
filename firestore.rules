@@ -1,35 +1,66 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function ownsUserData(userId) { return signedIn() && request.auth.uid == userId; }
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsUserData(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
     function validItem() {
-      return request.resource.data.keys().hasOnly(['id', 'name', 'category', 'initialQuantity', 'quantityUnit', 'expiryDate', 'containerId', 'trackingMethod', 'createdAt', 'updatedAt'])
-        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
-        && request.resource.data.category is string && request.resource.data.category.size() > 0 && request.resource.data.category.size() <= 80
-        && request.resource.data.initialQuantity is number && request.resource.data.initialQuantity >= 0
-        && request.resource.data.quantityUnit in ['g', 'kg']
+      return request.resource.data.name is string 
+        && request.resource.data.name.size() > 0 
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.category is string 
+        && request.resource.data.category.size() > 0 
+        && request.resource.data.category.size() <= 80
+        && (
+          (request.resource.data.initialQuantity is number && request.resource.data.initialQuantity >= 0) ||
+          (request.resource.data.quantity is number && request.resource.data.quantity >= 0)
+        )
         && request.resource.data.id is string
         && request.resource.data.containerId == 'container-01'
         && request.resource.data.trackingMethod == 'load-cell';
     }
 
-    match /users/{userId}/pantryItems/{itemId} {
-      allow read: if ownsUserData(userId);
-      allow create, update: if ownsUserData(userId) && validItem()
-        && request.resource.data.id == itemId;
-      allow delete: if ownsUserData(userId);
+    // Canonical pantry items collection
+    match /users/{userId}/items/{itemId} {
+      allow read, delete: if ownsUserData(userId);
+      allow create, update: if ownsUserData(userId) && validItem() && request.resource.data.id == itemId;
     }
+
+    // Legacy pantry items path (for migration compatibility)
+    match /users/{userId}/pantryItems/{itemId} {
+      allow read, delete: if ownsUserData(userId);
+      allow create, update: if ownsUserData(userId) && validItem();
+    }
+
+    // Container metadata lock
     match /users/{userId}/containers/{containerId} {
       allow read: if ownsUserData(userId);
       allow write: if ownsUserData(userId) && containerId == 'container-01'
-        && request.resource.data.keys().hasOnly(['id', 'activeItemId', 'trackingMethod', 'updatedAt'])
-        && request.resource.data.id == 'container-01' && request.resource.data.trackingMethod == 'load-cell'
+        && request.resource.data.id == 'container-01' 
+        && request.resource.data.trackingMethod == 'load-cell'
         && (request.resource.data.activeItemId == null || request.resource.data.activeItemId is string);
     }
-    // Reserved for Phase 4+ hardware/backend writers. Client users may read only.
-    match /users/{userId}/currentSensorState/{containerId} { allow read: if ownsUserData(userId); allow write: if false; }
-    match /users/{userId}/sensorReadings/{readingId} { allow read: if ownsUserData(userId); allow write: if false; }
-    match /users/{userId}/alerts/{alertId} { allow read: if ownsUserData(userId); allow write: if false; }
+
+    // User alerts for freshness and system notifications
+    match /users/{userId}/alerts/{alertId} {
+      allow read, write: if ownsUserData(userId);
+    }
+
+    // Reserved for Phase 5+ IoT sensor hardware and background ingestion.
+    // Client users may only read their own sensor state. Direct client writes are disallowed.
+    match /users/{userId}/currentSensorState/{containerId} {
+      allow read: if ownsUserData(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/sensorReadings/{readingId} {
+      allow read: if ownsUserData(userId);
+      allow write: if false;
+    }
   }
 }

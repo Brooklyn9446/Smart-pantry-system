@@ -10,6 +10,7 @@ export type InventoryContextValue = {
   addItem: (input: PantryItemInput) => Promise<PantryItem>
   updateItem: (id: string, input: PantryItemInput) => Promise<PantryItem>
   deleteItem: (id: string) => Promise<void>
+  clearFeedback: () => void
 }
 
 export const InventoryContext = createContext<InventoryContextValue | null>(null)
