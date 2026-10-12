@@ -6,16 +6,33 @@ import { SummaryCards } from './components/dashboard/SummaryCards'
 import { ExpiryTrackerPage } from './components/expiry/ExpiryTrackerPage'
 import { InventoryPage } from './components/inventory/InventoryPage'
 import { Sidebar } from './components/layout/Sidebar'
+import { MLPredictionsPage } from './components/predictions/MLPredictionsPage'
+import { LiveMonitoringPage } from './components/sensors/LiveMonitoringPage'
 import { AlertProvider } from './context/AlertContext'
 import { AuthProvider } from './context/AuthContext'
 import { InventoryProvider } from './context/InventoryContext'
+import { PredictionProvider } from './context/PredictionContext'
+import { QuantityHistoryProvider } from './context/QuantityHistoryContext'
+import { SensorProvider } from './context/SensorContext'
 import { useAlerts } from './context/useAlerts'
 
-type PageSlug = 'overview' | 'inventory' | 'expiry-tracker' | 'alerts'
+type PageSlug =
+  | 'overview'
+  | 'inventory'
+  | 'live-monitoring'
+  | 'expiry-tracker'
+  | 'ml-predictions'
+  | 'alerts'
 
 function getPage(): PageSlug {
   const hash = window.location.hash.replace('#', '')
-  if (hash === 'inventory' || hash === 'expiry-tracker' || hash === 'alerts') {
+  if (
+    hash === 'inventory' ||
+    hash === 'live-monitoring' ||
+    hash === 'expiry-tracker' ||
+    hash === 'ml-predictions' ||
+    hash === 'alerts'
+  ) {
     return hash
   }
   return 'overview'
@@ -33,20 +50,30 @@ export default function App() {
   return (
     <AuthProvider>
       <InventoryProvider>
-        <AlertProvider>
-          <div className="app-shell">
-            <Sidebar activePage={page} />
-            {page === 'inventory' ? (
-              <InventoryPage />
-            ) : page === 'expiry-tracker' ? (
-              <ExpiryTrackerPage />
-            ) : page === 'alerts' ? (
-              <AlertsPage />
-            ) : (
-              <Dashboard />
-            )}
-          </div>
-        </AlertProvider>
+        <SensorProvider>
+          <QuantityHistoryProvider>
+            <PredictionProvider>
+              <AlertProvider>
+                <div className="app-shell">
+                  <Sidebar activePage={page} />
+                  {page === 'inventory' ? (
+                    <InventoryPage />
+                  ) : page === 'live-monitoring' ? (
+                    <LiveMonitoringPage />
+                  ) : page === 'expiry-tracker' ? (
+                    <ExpiryTrackerPage />
+                  ) : page === 'ml-predictions' ? (
+                    <MLPredictionsPage />
+                  ) : page === 'alerts' ? (
+                    <AlertsPage />
+                  ) : (
+                    <Dashboard />
+                  )}
+                </div>
+              </AlertProvider>
+            </PredictionProvider>
+          </QuantityHistoryProvider>
+        </SensorProvider>
       </InventoryProvider>
     </AuthProvider>
   )

@@ -1,17 +1,23 @@
 import { CONTAINER_ID, TRACKING_METHOD } from './inventory'
 
+export type DeviceConnectionStatus = 'online' | 'stale' | 'offline' | 'waiting'
+
 /**
  * Interface representing live sensor status for a monitored pantry container.
- * Prepared for Phase 5 (ESP32 + Load Cell + DHT22).
+ * Phase 5 (ESP32 + Load Cell + DHT22).
  */
 export interface CurrentSensorState {
   containerId: typeof CONTAINER_ID
   deviceId: string
-  currentWeight: number
+  currentWeight: number // in grams
   weightUnit: 'g' | 'kg'
-  temperature: number
-  humidity: number
-  lastUpdated: string
+  temperature: number // in °C
+  humidity: number // in %
+  lastUpdated: string // ISO 8601 string
+  sensorStatus?: 'ok' | 'warning' | 'error' | 'simulated' | 'degraded'
+  rawWeight?: number
+  firmwareVersion?: string
+  sequenceNumber?: number
 }
 
 /**
@@ -28,6 +34,8 @@ export interface SensorReading {
   temperature?: number
   humidity?: number
   timestamp: string
+  sensorStatus?: string
+  rawWeight?: number
 }
 
 /**

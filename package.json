@@ -5,11 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",
+    "server": "tsx server/index.ts",
+    "simulate:sensor": "tsx scripts/simulateSensor.ts",
+    "ml:server": "python -m uvicorn app.main:app --app-dir ml-service --port 8000",
+    "ml:test": "python -m pytest ml-service/tests",
+    "test": "vitest run",
     "build": "tsc -b && vite build --configLoader runner",
     "lint": "eslint . --max-warnings=0",
     "preview": "vite preview"
   },
   "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
     "firebase": "^10.14.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -18,16 +26,22 @@
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@tailwindcss/vite": "^4.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/supertest": "^7.2.1",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
+    "supertest": "^7.3.1",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^5.0.3"
   }
 }

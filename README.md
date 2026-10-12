@@ -1,0 +1,295 @@
+# Smart Pantry Monitoring System — Phase 7 (ML Depletion Prediction)
+
+A real-time smart pantry inventory, environmental monitoring, consumption tracking, and machine-learning depletion prediction platform combining **ESP32 microcontroller hardware**, **HX711 load cell weight sensing**, **DHT22 climate tracking**, a **trusted Node.js/Express ingestion pipeline**, a **Python FastAPI + scikit-learn ML microservice**, and a **React + TypeScript dashboard backed by Cloud Firestore**.
+
+---
+
+## 1. System Architecture
+
+```text
++-----------------------+     +-----------------------+
+|  Load Cell (5kg/10kg) |     |  DHT22 Temp / Hum     |
++-----------+-----------+     +-----------+-----------+
+            |                             |
+     (Analog Signal)               (Digital Signal)
+            |                             |
++-----------v-----------+                 |
+| HX711 24-Bit ADC Amp  |                 |
++-----------+-----------+                 |
+            | (GPIO 4 DT, GPIO 5 SCK)     | (GPIO 15 DATA)
++-----------v-----------------------------v-----------+
+|              ESP32 Microcontroller Unit             |
+|  - Zero / Tare Calibration                          |
+|  - Moving Average Noise Smoothing                   |
+|  - DHT22 2.5s Minimum Sampling Interval             |
+|  - JSON Payload Formatting                          |
++--------------------------+--------------------------+
+                           |
+                     (Wi-Fi HTTPS)
+                           |
++--------------------------v--------------------------+
+|          Trusted Server Ingestion Service           |
+|  - Endpoint: POST /api/sensors/reading              |
+|  - Device Token Authentication (x-device-token)     |
+|  - Strict Numeric Range & Clock Drift Validation   |
++--------------------------+--------------------------+
+                           |
+             (Admin SDK / Firestore API)
+                           |
++--------------------------v--------------------------+
+|                 Cloud Firestore                     |
+|  - users/{uid}/currentSensorState/{containerId}     |
+|  - users/{uid}/sensorReadings/{readingId}           |
+|  - users/{uid}/quantityEvents/{eventId}             |
++--------------------------+--------------------------+
+                           |
+                  (Real-Time onSnapshot)
+                           |
++--------------------------v--------------------------+
+|             React + TypeScript Dashboard            |
+|  - Live Monitoring Page (#live-monitoring)          |
+|  - Quantity History & Trend Chart ([24H][7D][30D])  |
+|  - Consumption & Refill Event Detection             |
+|  - Refill-Aware Consumption Statistics              |
+|  - ML Predictions Dashboard (#ml-predictions)       |
++--------------------------+--------------------------+
+                           |
+             (HTTP POST /predict/depletion)
+                           |
++--------------------------v--------------------------+
+|            Python FastAPI ML Microservice           |
+|  - Linear Regression Slope Engine (scikit-learn)    |
+|  - Refill-Aware Cumulative Depletion Segmentation   |
+|  - Statistical Metrics (R², MAE, Confidence)        |
+|  - Zero-Depletion Projection Trajectory Generation  |
+|  - Resilient In-Browser Fallback Engine             |
++-----------------------------------------------------+
+```
+
+---
+
+## 2. Phase 6: Quantity History & Consumption Tracking
+
+Phase 6 turns raw load-cell weight history into actionable consumption metrics for `container-01`:
+
+1. **Noise Suppression Threshold (`SIGNIFICANT_CHANGE_GRAMS = 50g`)**:
+   Load cells naturally fluctuate (±1g to ±5g). Weight differences below 50g are filtered out as sensor noise and do not generate false events.
+2. **Consumption Detection**:
+   When quantity drops by $\ge 50\text{g}$, a `consumption` event is logged (e.g., $2500\text{g} \rightarrow 2300\text{g} \implies -200\text{g}$).
+3. **Refill Detection**:
+   When quantity increases by $\ge 50\text{g}$, a `refill` event is logged (e.g., $1000\text{g} \rightarrow 3000\text{g} \implies +2000\text{g}$).
+4. **Refill-Aware Consumption Math**:
+   Refills reset the consumption baseline. For a sequence $3000\text{g} \rightarrow 2500\text{g} \rightarrow 5000\text{g} \rightarrow 4500\text{g}$, total consumption is calculated as $(3000-2500) + (5000-4500) = 1000\text{g}$, rather than $3000 - 4500$.
+5. **Idempotency & Duplicate Prevention**:
+   Event IDs are deterministic based on reading transitions (`qevent_{fromReadingId}_{toReadingId}`). Processing the same stream multiple times produces identical event IDs.
+6. **Chronological Sorting**:
+   Sensor readings are strictly sorted by `timestamp` before computing transitions to safely handle out-of-order document delivery.
+7. **Consumption Statistics**:
+   - **Today's Consumption**: Grams consumed since midnight local time.
+   - **Last 7 Days**: Total grams consumed in the trailing 7 days.
+   - **Daily Average**: Computed only when reading history spans $\ge 24\text{ hours}$; displays `Not enough data yet` otherwise.
+
+---
+
+## 3. Phase 7: ML Depletion Prediction
+
+Phase 7 uses historical quantity and consumption telemetry to forecast when pantry items in `container-01` will run out:
+
+1. **Refill-Aware Linear Regression**:
+   - Standard linear regression across a whole time series fails when containers are refilled, treating refills as "negative consumption".
+   - Our depletion engine partitions the timeline at every refill ($\Delta W \ge 50\text{g}$).
+   - It tracks strictly cumulative consumption across depletion segments and regresses consumed weight $y$ against elapsed time $x$:
+     $$\text{Rate (g/day)} = \text{LinearRegression}(\Delta t_{\text{days}}, \Delta W_{\text{consumed}})$$
+2. **Depletion Date & Trajectory Forecast**:
+   - $$\text{Days Remaining} = \frac{\text{Current Weight}}{\text{Daily Consumption Rate}}$$
+   - Generates daily projection points from current timestamp until projected zero-point.
+3. **Strict Minimum Data Requirements (No Fabricated Guesses)**:
+   - Requires at least **3 valid consumption points** spanning at least **24 hours**.
+   - If insufficient data exists, the system returns `insufficient_data` confidence without displaying fabricated predictions.
+4. **Confidence Rating Calculation**:
+   - Evaluates coefficient of determination ($R^2$), Mean Absolute Error (MAE), sample count, and time span.
+   - Ratings: `high` ($R^2 \ge 0.85$, $MAE \le 40\text{g}$), `medium` ($R^2 \ge 0.65$), `low`, or `insufficient_data`.
+5. **Dual Architecture (Microservice + Client Fallback)**:
+   - **Primary**: Python FastAPI microservice (`ml-service/app/main.py`) powered by `scikit-learn` on port 8000.
+   - **Fallback**: TypeScript client engine (`src/utils/mlPredictor.ts`) running identical regression math if the Python service is offline.
+6. **Frontend Dashboard (`#ml-predictions`)**:
+   - Current item & load-cell status banner.
+   - 4 KPI summary cards: Days Remaining, Estimated Empty Date, Daily Burn Rate, and Model Confidence.
+   - Interactive Recharts trajectory chart displaying actual historical weights alongside the dotted ML depletion trendline.
+   - Model Diagnostics card displaying $R^2$, MAE, data points analyzed, time span, and data quality notes.
+
+---
+
+## 4. Hardware Bill of Materials (BOM)
+
+| Component | Specification | Quantity | Scope / Purpose |
+| :--- | :--- | :--- | :--- |
+| **Microcontroller** | ESP32 DevKit v1 / NodeMCU-32S | 1 | Sensor sampling, local filtering, Wi-Fi uplink |
+| **Load Cell** | Straight Bar Strain Gauge (5kg or 10kg) | 1 | Container weight sensing for `container-01` |
+| **Amplifier** | HX711 24-Bit ADC Module | 1 | Precision load cell signal amplification |
+| **Climate Sensor** | DHT22 (AM2302) | 1 | Ambient temperature & relative humidity |
+| **Resistor** | 4.7kΩ – 10kΩ Pull-up (if bare DHT22) | 1 | DHT22 data line pull-up to 3.3V |
+| **Breadboard / Wires** | Jumper Wires (F-F, M-F) | 1 set | Hardware prototyping interconnects |
+
+---
+
+## 5. Hardware Pinout & Wiring
+
+### ESP32 Pin Assignments
+
+```text
+HX711 Module:
+  HX711 VCC  →  ESP32 3.3V
+  HX711 GND  →  ESP32 GND
+  HX711 DT   →  ESP32 GPIO 4
+  HX711 SCK  →  ESP32 GPIO 5
+
+DHT22 Sensor:
+  DHT22 VCC   →  ESP32 3.3V
+  DHT22 DATA  →  ESP32 GPIO 15 (with pull-up to 3.3V)
+  DHT22 GND   →  ESP32 GND
+```
+
+### Load Cell to HX711 Wiring Reference
+
+> ⚠️ **IMPORTANT WIRE COLOR NOTICE**: Load cell wire color schemes vary by manufacturer. Always check your load cell datasheet before powering on.
+
+```text
+Red Wire    → E+ (Excitation +)
+Black Wire  → E- (Excitation -)
+White Wire  → A- (Signal -)
+Green Wire  → A+ (Signal +)
+```
+
+---
+
+## 6. Arduino IDE Setup & Required Libraries
+
+### Required Arduino Libraries
+1. **`HX711`** by *bogde* (v0.7.5+)
+2. **`DHT sensor library`** by *Adafruit* (v1.4.4+)
+3. **`Adafruit Unified Sensor`** by *Adafruit*
+4. **`ArduinoJson`** by *Benoit Blanchon* (v6.21.0+)
+
+---
+
+## 7. Firestore Schema
+
+### Current Sensor State
+`users/{uid}/currentSensorState/container-01`
+```json
+{
+  "containerId": "container-01",
+  "deviceId": "device-01",
+  "currentWeight": 2450.0,
+  "weightUnit": "g",
+  "temperature": 22.4,
+  "humidity": 58.0,
+  "lastUpdated": "2026-10-07T01:30:00.000Z",
+  "sensorStatus": "ok"
+}
+```
+
+### Historical Sensor Readings
+`users/{uid}/sensorReadings/{readingId}`
+```json
+{
+  "id": "reading_1760000000_a1b2c3d4",
+  "deviceId": "device-01",
+  "containerId": "container-01",
+  "trackingMethod": "load-cell",
+  "measuredWeight": 2450.0,
+  "weightUnit": "g",
+  "temperature": 22.4,
+  "humidity": 58.0,
+  "timestamp": "2026-10-07T01:30:00.000Z",
+  "sensorStatus": "ok"
+}
+```
+
+### Derived Quantity Events (Phase 6)
+`users/{uid}/quantityEvents/{eventId}`
+```json
+{
+  "id": "qevent_readingA_readingB",
+  "containerId": "container-01",
+  "type": "consumption",
+  "amountGrams": 200.0,
+  "previousWeightGrams": 2500.0,
+  "newWeightGrams": 2300.0,
+  "timestamp": "2026-10-07T01:40:00.000Z",
+  "fromReadingId": "readingA",
+  "toReadingId": "readingB"
+}
+```
+
+---
+
+## 8. Development Sensor Simulator
+
+Test the entire ingestion and consumption detection pipeline without physical hardware:
+
+```bash
+# Start backend server
+npm run server
+
+# Run automated scenario pattern (baseline -> noise -> consumption -> refill -> consumption)
+npm run simulate:sensor -- --pattern
+
+# Simulate a food consumption of 200g
+npm run simulate:sensor -- --consume 200
+
+# Simulate a pantry refill of 1500g
+npm run simulate:sensor -- --refill 1500
+
+# Continuous streaming
+npm run simulate:sensor
+```
+
+---
+
+## 9. Python ML Microservice Setup & Tests
+
+The ML service operates independently in `ml-service/`:
+
+```bash
+# 1. Install Python dependencies
+pip install -r ml-service/requirements.txt
+
+# 2. Run pytest suite (7 depletion & segmentation tests)
+npm run ml:test
+# or directly:
+python -m pytest ml-service/tests
+
+# 3. Start FastAPI prediction service on port 8000
+npm run ml:server
+# or directly:
+python -m uvicorn app.main:app --app-dir ml-service --port 8000 --reload
+```
+
+Interactive API documentation is available at `http://localhost:8000/docs`.
+
+---
+
+## 10. Running the Full Application & Tests
+
+```bash
+# 1. Run all unit and integration tests (Vitest)
+npm test
+
+# 2. Run TypeScript type check and production build
+npm run build
+
+# 3. Run ESLint code quality check
+npm run lint
+
+# 4. Start frontend development server (Vite)
+npm run dev
+```
+
+---
+
+## 11. Phase Scope & Constraints
+
+- **Phase 7 Scope Completed**: Refill-aware ML depletion linear regression, rate calculation, days remaining forecasting, confidence scoring, Recharts trajectory visualization, model diagnostics, and Python FastAPI microservice.
+- **Phase 8 Scope**: Automated restock alerts, grocery shopping list generation, and reorder trigger thresholds are intentionally excluded from this phase and will be implemented in Phase 8.

@@ -62,5 +62,10 @@ service cloud.firestore {
       allow read: if ownsUserData(userId);
       allow write: if false;
     }
+
+    // Phase 6 Quantity Events (consumption and refill logs)
+    match /users/{userId}/quantityEvents/{eventId} {
+      allow read, write: if ownsUserData(userId);
+    }
   }
 }

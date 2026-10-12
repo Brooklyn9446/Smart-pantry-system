@@ -5,3 +5,6 @@ dist/
 .env
 .env.*
 !.env.example
+firmware/**/secrets.h
+secrets.h
+server/.sensor-cache.json

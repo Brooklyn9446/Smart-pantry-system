@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../../context/useAuth'
 import { useInventory } from '../../context/useInventory'
+import { useSensors } from '../../context/useSensors'
 import type { PantryItem, PantryItemInput } from '../../types/inventory'
 import { getExpiryStatus } from '../../utils/expiry'
+import { formatWeightDisplay } from '../../utils/sensorCalculations'
 import { PanelState } from '../ui/PanelState'
 import { StatusBadge } from '../ui/StatusBadge'
 import { InventoryForm } from './InventoryForm'
@@ -22,6 +24,7 @@ export function InventoryPage() {
     clearFeedback,
   } = useInventory()
   const { userId, isAuthLoading, authError } = useAuth()
+  const { currentState, netFoodWeightGrams, deviceStatus, timeAgoFormatted } = useSensors()
 
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<PantryItem | undefined>()
@@ -91,7 +94,9 @@ export function InventoryPage() {
           userId={userId}
         />
         <section className="confirm-card" role="alertdialog" aria-labelledby="delete-heading">
-          <span className="delete-icon" aria-hidden="true">!</span>
+          <span className="delete-icon" aria-hidden="true">
+            !
+          </span>
           <h2 id="delete-heading">Remove {selected.name}?</h2>
           <p>
             The item will be removed from Cloud Firestore. Container <code>container-01</code> will become available to assign a new item.
@@ -153,17 +158,32 @@ export function InventoryPage() {
 
           <dl className="details-grid">
             <div>
-              <dt>Initial quantity</dt>
+              <dt>Initial / manual quantity</dt>
               <dd>
                 {selected.initialQuantity} {selected.quantityUnit}
-                <small>Manual record ({source === 'firestore' ? 'Cloud Firestore' : 'Local Storage'})</small>
+                <small>
+                  Manual baseline record ({source === 'firestore' ? 'Cloud Firestore' : 'Local Storage'})
+                </small>
               </dd>
             </div>
             <div>
-              <dt>Sensor quantity</dt>
+              <dt>Sensor measured quantity</dt>
               <dd>
-                Not available
-                <small>HX711 load cell pending (Phase 5)</small>
+                {currentState ? (
+                  <>
+                    <span style={{ color: '#13745c', fontWeight: 700 }}>
+                      {formatWeightDisplay(netFoodWeightGrams, 'kg')}
+                    </span>
+                    <small>
+                      Authoritative · HX711 Load Cell ({deviceStatus} · {timeAgoFormatted})
+                    </small>
+                  </>
+                ) : (
+                  <>
+                    Waiting for sensor data
+                    <small>HX711 load cell on container-01</small>
+                  </>
+                )}
               </dd>
             </div>
             <div>
@@ -179,8 +199,8 @@ export function InventoryPage() {
             <div>
               <dt>Tracking method</dt>
               <dd>
-                Load cell
-                <small>Single container mode</small>
+                Load cell (HX711)
+                <small>Single container mode · container-01</small>
               </dd>
             </div>
           </dl>
@@ -244,9 +264,11 @@ export function InventoryPage() {
           <PanelState kind="loading" message="pantry inventory from Cloud Firestore" />
         </section>
       ) : activeError && items.length === 0 ? (
-        /* State 2: Error (Permission denied, network failure, Firestore error) */
+        /* State 2: Error */
         <section className="inventory-empty" role="alert">
-          <span className="delete-icon" aria-hidden="true">!</span>
+          <span className="delete-icon" aria-hidden="true">
+            !
+          </span>
           <h2>Unable to load inventory</h2>
           <p>{activeError}</p>
         </section>
@@ -273,7 +295,11 @@ export function InventoryPage() {
             <div className="inventory-item-main">
               <strong>{activeItem.name}</strong>
               <span>
-                {activeItem.category} · {activeItem.containerId} · {activeItem.initialQuantity} {activeItem.quantityUnit}
+                {activeItem.category} · {activeItem.containerId} · Baseline: {activeItem.initialQuantity}{' '}
+                {activeItem.quantityUnit}
+                {currentState
+                  ? ` · Live: ${formatWeightDisplay(netFoodWeightGrams, 'kg')} (load cell)`
+                  : ''}
               </span>
             </div>
             <div className="inventory-quantity" style={{ minWidth: '180px' }}>
@@ -346,7 +372,9 @@ function InventoryFeedback({
       )}
       <p className="data-source">
         {source === 'firestore'
-          ? `Connected to Cloud Firestore (Real-time sync · User: ${userId ? userId.slice(0, 8) + '…' : 'Authenticated'})`
+          ? `Connected to Cloud Firestore (Real-time sync · User: ${
+              userId ? userId.slice(0, 8) + '…' : 'Authenticated'
+            })`
           : 'Local storage fallback — set up Firebase credentials in .env.local to enable cloud persistence.'}
       </p>
     </>

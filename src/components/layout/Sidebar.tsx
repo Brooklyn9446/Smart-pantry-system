@@ -1,4 +1,5 @@
 import { useAlerts } from '../../context/useAlerts'
+import { useSensors } from '../../context/useSensors'
 
 const navigationItems = [
   ['Overview', '⌂', 'overview'],
@@ -13,6 +14,34 @@ const navigationItems = [
 
 export function Sidebar({ activePage }: { activePage: string }) {
   const { unreadCount } = useAlerts()
+  const { deviceStatus, timeAgoFormatted } = useSensors()
+
+  const dotColor =
+    deviceStatus === 'online'
+      ? '#55c895'
+      : deviceStatus === 'stale'
+      ? '#f59e0b'
+      : deviceStatus === 'offline'
+      ? '#ef4444'
+      : '#94a3b8'
+
+  const shadowColor =
+    deviceStatus === 'online'
+      ? '#225642'
+      : deviceStatus === 'stale'
+      ? '#78350f'
+      : deviceStatus === 'offline'
+      ? '#7f1d1d'
+      : '#334155'
+
+  const statusText =
+    deviceStatus === 'online'
+      ? 'Connected'
+      : deviceStatus === 'stale'
+      ? 'Stale stream'
+      : deviceStatus === 'offline'
+      ? 'Disconnected'
+      : 'Waiting for sensor'
 
   return (
     <aside className="sidebar">
@@ -62,10 +91,14 @@ export function Sidebar({ activePage }: { activePage: string }) {
       </nav>
 
       <div className="sidebar-footer">
-        <div className="device-dot" aria-hidden="true" />
+        <div
+          className="device-dot"
+          aria-hidden="true"
+          style={{ background: dotColor, boxShadow: `0 0 0 4px ${shadowColor}` }}
+        />
         <div>
           <strong>Pantry sensor</strong>
-          <span>Connected</span>
+          <span title={timeAgoFormatted}>{statusText}</span>
         </div>
       </div>
     </aside>

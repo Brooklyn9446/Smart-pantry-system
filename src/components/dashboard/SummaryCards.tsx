@@ -1,8 +1,15 @@
 import { useInventory } from '../../context/useInventory'
+import { useSensors } from '../../context/useSensors'
 import { getExpiryStatus } from '../../utils/expiry'
+import {
+  formatHumidity,
+  formatTemperature,
+  formatWeightDisplay,
+} from '../../utils/sensorCalculations'
 
 export function SummaryCards() {
   const { items } = useInventory()
+  const { currentState, netFoodWeightGrams, deviceStatus } = useSensors()
 
   const expiringOrExpired = items.filter((item) => {
     const { status } = getExpiryStatus(item.expiryDate)
@@ -23,6 +30,9 @@ export function SummaryCards() {
     expiryDetail = `${expiringSoonCount} expiring within 7 days`
   }
 
+  const hasSensor = currentState !== null
+  const activeItem = items[0]
+
   const metrics = [
     {
       label: 'Tracked items',
@@ -39,16 +49,20 @@ export function SummaryCards() {
       tone: expiredCount > 0 ? ('rose' as const) : expiringSoonCount > 0 ? ('amber' as const) : ('teal' as const),
     },
     {
-      label: 'Low stock',
-      value: '—',
-      detail: 'Hardware sensor pending (Phase 5)',
-      tone: 'rose' as const,
+      label: 'Live stock weight',
+      value: hasSensor ? formatWeightDisplay(netFoodWeightGrams, 'kg') : '—',
+      detail: hasSensor
+        ? `${activeItem ? activeItem.name + ' · ' : ''}HX711 load cell (${deviceStatus})`
+        : 'Waiting for sensor data',
+      tone: hasSensor ? ('teal' as const) : ('rose' as const),
     },
     {
       label: 'Pantry climate',
-      value: '22.4°C',
-      detail: '58% RH · DHT22 simulated',
-      tone: 'sky' as const,
+      value: hasSensor ? formatTemperature(currentState.temperature) : '—',
+      detail: hasSensor
+        ? `${formatHumidity(currentState.humidity)} RH · DHT22 live`
+        : 'Waiting for sensor data',
+      tone: hasSensor ? ('sky' as const) : ('sky' as const),
     },
   ]
 
