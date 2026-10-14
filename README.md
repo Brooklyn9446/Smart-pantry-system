@@ -120,7 +120,79 @@ Phase 7 uses historical quantity and consumption telemetry to forecast when pant
 
 ---
 
-## 4. Hardware Bill of Materials (BOM)
+## 4. Phase 8: Low-Stock Alerts and Shopping List Management
+
+Overview
+
+Phase 8 enhances the Smart Pantry Monitoring System by introducing low-stock monitoring, automated restocking alerts, and shopping list management. These features help users track pantry inventory, identify items that need replenishment, and manage shopping more efficiently.
+
+**Features**
+
+1. **Low-Stock Threshold Monitoring**
+
+Allows users to configure a minimum stock threshold for inventory items.
+
+Identifies items whose quantity falls below the configured threshold.
+
+Helps users monitor pantry supplies and avoid running out of essential items.
+
+2. **Automated Low-Stock Alerts**
+
+Generates alerts when an item's stock falls below its minimum threshold.
+
+Prevents duplicate low-stock alerts for the same item.
+
+Resolves low-stock alerts when the item is restocked.
+
+3. **Shopping List Management**
+
+Supports adding items to the shopping list.
+
+Allows users to add items manually or through restocking workflows.
+
+Enables users to mark items as purchased.
+
+Allows users to remove items from the shopping list.
+
+4. **Dashboard Integration**
+
+Integrates low-stock information into the dashboard summary.
+
+Provides navigation to shopping list management.
+
+Helps users identify items that require attention.
+
+**Technologies and Implementation**
+
+Phase 8 builds on the existing Smart Pantry Monitoring System using:
+
+React and TypeScript for the user interface and application logic.
+
+Firebase Firestore for application data and security rules.
+
+Vitest for frontend utility and component-related tests.
+
+Pytest for Python-side tests.
+
+ESLint for code quality checks.
+
+Testing and Validation
+
+The Phase 8 implementation was validated with the following reported results:
+
+Vitest: 88 tests passed across 9 test files.
+
+Pytest: 7 tests passed.
+
+ESLint: No errors or warnings.
+
+Production build: Successful.
+
+**Expected Outcome**
+
+Phase 8 improves pantry inventory management by notifying users when stock is low and providing a convenient shopping list for replenishment. It reduces the need for manual stock checking and supports a more organized pantry management workflow.
+
+## 5. Hardware Bill of Materials (BOM)
 
 | Component | Specification | Quantity | Scope / Purpose |
 | :--- | :--- | :--- | :--- |
@@ -133,7 +205,7 @@ Phase 7 uses historical quantity and consumption telemetry to forecast when pant
 
 ---
 
-## 5. Hardware Pinout & Wiring
+## 6. Hardware Pinout & Wiring
 
 ### ESP32 Pin Assignments
 
@@ -163,7 +235,7 @@ Green Wire  → A+ (Signal +)
 
 ---
 
-## 6. Arduino IDE Setup & Required Libraries
+## 7. Arduino IDE Setup & Required Libraries
 
 ### Required Arduino Libraries
 1. **`HX711`** by *bogde* (v0.7.5+)
@@ -173,7 +245,7 @@ Green Wire  → A+ (Signal +)
 
 ---
 
-## 7. Firestore Schema
+## 8. Firestore Schema
 
 ### Current Sensor State
 `users/{uid}/currentSensorState/container-01`
@@ -225,7 +297,7 @@ Green Wire  → A+ (Signal +)
 
 ---
 
-## 8. Development Sensor Simulator
+## 9. Development Sensor Simulator
 
 Test the entire ingestion and consumption detection pipeline without physical hardware:
 
@@ -248,7 +320,7 @@ npm run simulate:sensor
 
 ---
 
-## 9. Python ML Microservice Setup & Tests
+## 10. Python ML Microservice Setup & Tests
 
 The ML service operates independently in `ml-service/`:
 
@@ -271,7 +343,7 @@ Interactive API documentation is available at `http://localhost:8000/docs`.
 
 ---
 
-## 10. Running the Full Application & Tests
+## 11. Running the Full Application & Tests
 
 ```bash
 # 1. Run all unit and integration tests (Vitest)
@@ -289,7 +361,7 @@ npm run dev
 
 ---
 
-## 11. Phase 8: Low-Stock Alerts, Restock Triggers & Shopping List
+## 12. Phase 8: Low-Stock Alerts, Restock Triggers & Shopping List
 
 Phase 8 introduces proactive inventory replenishment and grocery management:
 
@@ -325,7 +397,7 @@ Phase 8 introduces proactive inventory replenishment and grocery management:
 
 ---
 
-## 12. Phase Scope & Completed Milestones
+## 13. Phase Scope & Completed Milestones
 
 - **Phase 7 Scope Completed**: Refill-aware ML depletion linear regression, rate calculation, days remaining forecasting, confidence scoring, Recharts trajectory visualization, model diagnostics, and Python FastAPI microservice.
 - **Phase 8 Scope Completed**: Configurable item stock thresholds, automatic low-stock detection, deduplicated alerts, automatic resolution on restock, interactive shopping list with manual & auto item addition, purchased tracking, dashboard indicators, and Firestore persistence with security rules.
