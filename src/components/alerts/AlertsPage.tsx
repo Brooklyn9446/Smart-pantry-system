@@ -3,7 +3,7 @@ import { useAlerts } from '../../context/useAlerts'
 import { PanelState } from '../ui/PanelState'
 import { StatusBadge } from '../ui/StatusBadge'
 
-type Tab = 'all' | 'active' | 'read'
+type Tab = 'all' | 'active' | 'read' | 'resolved'
 
 function formatAlertDate(iso: string): string {
   try {
@@ -24,6 +24,9 @@ export function AlertsPage() {
   const { alerts, unreadCount, isLoading, error, markAsRead } = useAlerts()
   const [tab, setTab] = useState<Tab>('all')
 
+  const resolvedCount = alerts.filter((a) => a.status === 'resolved').length
+  const readCount = alerts.filter((a) => a.status === 'read').length
+
   const filteredAlerts = alerts.filter((alert) => {
     if (tab === 'all') return true
     return alert.status === tab
@@ -33,10 +36,10 @@ export function AlertsPage() {
     <main id="alerts" className="main-content inventory-page">
       <header className="inventory-header">
         <div>
-          <p className="eyebrow">System & freshness notifications</p>
+          <p className="eyebrow">System, freshness & low-stock notifications</p>
           <h1>Pantry Alerts</h1>
           <p className="subtitle">
-            Automated alerts for expiring foods, system conditions, and pantry activity.
+            Automated alerts for expiring foods, low-stock conditions, and pantry activity.
           </p>
         </div>
       </header>
@@ -68,7 +71,14 @@ export function AlertsPage() {
           type="button"
           onClick={() => setTab('read')}
         >
-          Read ({alerts.length - unreadCount})
+          Read ({readCount})
+        </button>
+        <button
+          className={tab === 'resolved' ? 'primary-button' : 'secondary-button'}
+          type="button"
+          onClick={() => setTab('resolved')}
+        >
+          Resolved ({resolvedCount})
         </button>
       </div>
 
@@ -89,26 +99,28 @@ export function AlertsPage() {
                 padding: '20px',
                 minHeight: 'auto',
                 borderLeft:
-                  alert.severity === 'critical'
+                  alert.status === 'resolved'
+                    ? '4px solid #10b981'
+                    : alert.severity === 'critical'
                     ? '4px solid #c54545'
                     : alert.severity === 'warning'
                     ? '4px solid #a86411'
                     : '4px solid #278261',
-                opacity: alert.status === 'read' ? 0.75 : 1,
+                opacity: alert.status === 'resolved' ? 0.65 : alert.status === 'read' ? 0.75 : 1,
               }}
             >
               <div
-                className={`alert-symbol ${alert.severity}`}
+                className={`alert-symbol ${alert.status === 'resolved' ? 'good' : alert.severity}`}
                 style={{ width: '36px', height: '36px', fontSize: '16px', flexShrink: 0 }}
                 aria-hidden="true"
               >
-                {alert.severity === 'critical' ? '!' : alert.severity === 'warning' ? '↓' : '✓'}
+                {alert.status === 'resolved' ? '✓' : alert.severity === 'critical' ? '!' : alert.severity === 'warning' ? '↓' : 'ℹ'}
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '4px' }}>
                   <strong style={{ fontSize: '15px', margin: 0 }}>{alert.title}</strong>
-                  <StatusBadge status={alert.severity} />
+                  <StatusBadge status={alert.status === 'resolved' ? 'good' : alert.severity} />
                   {alert.containerId && (
                     <span className="assignment-pill" style={{ marginLeft: 0 }}>
                       {alert.containerId}
@@ -117,6 +129,11 @@ export function AlertsPage() {
                   {alert.status === 'read' && (
                     <span style={{ fontSize: '11px', color: '#718078', fontWeight: 500 }}>
                       (Read)
+                    </span>
+                  )}
+                  {alert.status === 'resolved' && (
+                    <span style={{ fontSize: '11px', color: '#059669', fontWeight: 600 }}>
+                      (Resolved)
                     </span>
                   )}
                 </div>

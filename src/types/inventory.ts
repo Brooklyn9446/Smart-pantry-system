@@ -11,6 +11,7 @@ export interface PantryItem {
   initialQuantity: number
   quantityUnit: QuantityUnit
   expiryDate?: string
+  minStockThreshold?: number
   containerId: typeof CONTAINER_ID
   trackingMethod: TrackingMethod
   createdAt: string
@@ -23,6 +24,7 @@ export interface PantryItemInput {
   initialQuantity: number
   quantityUnit: QuantityUnit
   expiryDate?: string
+  minStockThreshold?: number
 }
 
 export type PantryItemFormErrors = Partial<Record<keyof PantryItemInput, string>>

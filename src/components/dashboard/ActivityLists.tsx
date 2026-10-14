@@ -137,10 +137,10 @@ export function AlertList() {
           {recentAlerts.map((alert) => (
             <li key={alert.id}>
               <span
-                className={`alert-symbol ${alert.severity}`}
+                className={`alert-symbol ${alert.status === 'resolved' ? 'good' : alert.severity}`}
                 aria-hidden="true"
               >
-                {alert.severity === 'critical' ? '!' : alert.severity === 'warning' ? '↓' : '✓'}
+                {alert.status === 'resolved' ? '✓' : alert.severity === 'critical' ? '!' : alert.severity === 'warning' ? '↓' : 'ℹ'}
               </span>
               <div>
                 <strong>{alert.title}</strong>

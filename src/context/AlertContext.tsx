@@ -4,10 +4,12 @@ import type { PantryAlert } from '../types/alerts'
 import { AlertContext } from './alertContextValue'
 import { useAuth } from './useAuth'
 import { useInventory } from './useInventory'
+import { useSensors } from './useSensors'
 
 export function AlertProvider({ children }: { children: ReactNode }) {
   const { userId, isAuthLoading } = useAuth()
   const { items } = useInventory()
+  const { netFoodWeightGrams, currentState } = useSensors()
   const [alerts, setAlerts] = useState<PantryAlert[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
@@ -40,12 +42,24 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     }
   }, [userId, isAuthLoading])
 
-  // Automatically sync expiry alerts when inventory items change
+  // Automatically sync expiry alerts and low-stock alerts when inventory items or sensor weight change
   useEffect(() => {
-    if (!isAuthLoading && userId) {
-      void alertRepository.syncExpiryAlerts(userId, items)
+    if (!isAuthLoading) {
+      const targetUserId = userId ?? 'local-user'
+      const syncAlerts = async () => {
+        await alertRepository.syncExpiryAlerts(targetUserId, items)
+        await alertRepository.syncLowStockAlerts(
+          targetUserId,
+          items,
+          currentState ? netFoodWeightGrams : null
+        )
+        if (!alertRepository.isRemote() || targetUserId === 'local-user') {
+          setAlerts(await alertRepository.getAll(targetUserId))
+        }
+      }
+      void syncAlerts()
     }
-  }, [items, userId, isAuthLoading])
+  }, [items, userId, isAuthLoading, netFoodWeightGrams, currentState])
 
   const markAsRead = useCallback(
     async (alertId: string) => {

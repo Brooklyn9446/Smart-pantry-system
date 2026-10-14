@@ -8,3 +8,9 @@ dist/
 firmware/**/secrets.h
 secrets.h
 server/.sensor-cache.json
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

@@ -12,6 +12,7 @@ import { getFirebaseServices, isFirebaseConfigured } from '../lib/firebase'
 import type { PantryAlert } from '../types/alerts'
 import type { PantryItem } from '../types/inventory'
 import { getExpiryStatus } from '../utils/expiry'
+import { evaluateStockStatus, formatQuantityWithUnit, getLowStockAlertId } from '../utils/lowStock'
 
 const ALERTS_STORAGE_KEY = 'pantry-pulse-alerts-v1'
 
@@ -52,16 +53,20 @@ function normalizeDate(val: unknown): string {
 }
 
 function toAlert(id: string, data: DocumentData): PantryAlert {
+  const validTypes = ['expiry', 'system', 'sensor', 'low-stock'] as const
+  const type = validTypes.includes(data.type) ? data.type : 'expiry'
+  const status = data.status === 'read' ? 'read' : data.status === 'resolved' ? 'resolved' : 'active'
+
   return {
     id,
-    type: data.type ?? 'expiry',
+    type,
     itemId: data.itemId,
     itemName: data.itemName,
     containerId: data.containerId ?? 'container-01',
     title: data.title ?? 'Alert',
     message: data.message ?? '',
     severity: data.severity === 'critical' || data.severity === 'warning' ? data.severity : 'info',
-    status: data.status === 'read' ? 'read' : 'active',
+    status,
     createdAt: normalizeDate(data.createdAt),
     updatedAt: normalizeDate(data.updatedAt),
   }
@@ -227,6 +232,171 @@ export const alertRepository = {
         } catch (err) {
           if (import.meta.env.DEV) {
             console.warn('[SmartPantry] Unable to sync alert document:', err)
+          }
+        }
+      }
+    }
+  },
+
+  async syncLowStockAlerts(
+    userId: string,
+    items: PantryItem[],
+    measuredGrams?: number | null
+  ): Promise<void> {
+    const isLocal = !isFirebaseConfigured() || !userId || userId === 'local-user'
+    const services = getFirebaseServices()
+    const now = new Date().toISOString()
+
+    for (const item of items) {
+      const evaluation = evaluateStockStatus(item, measuredGrams)
+      const alertId = getLowStockAlertId(item.id)
+
+      if (evaluation.isLowStock) {
+        // Condition: Quantity <= threshold
+        const severity = evaluation.stockStatus === 'out-of-stock' ? ('critical' as const) : ('warning' as const)
+        const title =
+          evaluation.stockStatus === 'out-of-stock'
+            ? `${item.name} is out of stock`
+            : `${item.name} is low on stock`
+
+        const message =
+          evaluation.stockStatus === 'out-of-stock'
+            ? `${item.name} container is empty (0 ${item.quantityUnit}). Restock required.`
+            : `${item.name} has reached ${formatQuantityWithUnit(
+                evaluation.currentQuantityGrams,
+                item.quantityUnit
+              )} (threshold: ${formatQuantityWithUnit(
+                evaluation.thresholdGrams,
+                item.quantityUnit
+              )}). Plan to restock.`
+
+        if (isLocal) {
+          const current = readLocalAlerts()
+          const existing = current.find((a) => a.id === alertId)
+
+          if (!existing) {
+            const newAlert: PantryAlert = {
+              id: alertId,
+              type: 'low-stock',
+              itemId: item.id,
+              itemName: item.name,
+              containerId: item.containerId,
+              title,
+              message,
+              severity,
+              status: 'active',
+              createdAt: now,
+              updatedAt: now,
+            }
+            writeLocalAlerts([newAlert, ...current])
+          } else if (existing.status === 'resolved') {
+            // Re-activate previously resolved alert if stock dropped again
+            const updated = current.map((a) =>
+              a.id === alertId
+                ? {
+                    ...a,
+                    status: 'active' as const,
+                    severity,
+                    title,
+                    message,
+                    updatedAt: now,
+                  }
+                : a
+            )
+            writeLocalAlerts(updated)
+          }
+          // If active or read, avoid duplicate creation (deduplicated)
+        } else if (services) {
+          try {
+            const alertRef = doc(services.db, 'users', userId, 'alerts', alertId)
+            const snap = await getDoc(alertRef)
+
+            if (!snap.exists()) {
+              await setDoc(alertRef, {
+                id: alertId,
+                type: 'low-stock',
+                itemId: item.id,
+                itemName: item.name,
+                containerId: item.containerId,
+                title,
+                message,
+                severity,
+                status: 'active',
+                createdAt: now,
+                updatedAt: now,
+              })
+              if (import.meta.env.DEV) {
+                console.log(`[SmartPantry] Created low-stock alert ${alertId} for ${item.name}`)
+              }
+            } else {
+              const data = snap.data()
+              if (data?.status === 'resolved') {
+                // Re-activate resolved alert
+                await setDoc(
+                  alertRef,
+                  {
+                    status: 'active',
+                    severity,
+                    title,
+                    message,
+                    updatedAt: now,
+                  },
+                  { merge: true }
+                )
+              }
+            }
+          } catch (err) {
+            if (import.meta.env.DEV) {
+              console.warn('[SmartPantry] Low-stock alert sync error:', err)
+            }
+          }
+        }
+      } else {
+        // Condition: Replenished! Quantity > threshold
+        if (isLocal) {
+          const current = readLocalAlerts()
+          const existing = current.find((a) => a.id === alertId)
+          if (existing && existing.status !== 'resolved') {
+            const updated = current.map((a) =>
+              a.id === alertId
+                ? {
+                    ...a,
+                    status: 'resolved' as const,
+                    message: `${item.name} stock replenished to ${formatQuantityWithUnit(
+                      evaluation.currentQuantityGrams,
+                      item.quantityUnit
+                    )}.`,
+                    updatedAt: now,
+                  }
+                : a
+            )
+            writeLocalAlerts(updated)
+          }
+        } else if (services) {
+          try {
+            const alertRef = doc(services.db, 'users', userId, 'alerts', alertId)
+            const snap = await getDoc(alertRef)
+            if (snap.exists() && snap.data()?.status !== 'resolved') {
+              await setDoc(
+                alertRef,
+                {
+                  status: 'resolved',
+                  message: `${item.name} stock replenished to ${formatQuantityWithUnit(
+                    evaluation.currentQuantityGrams,
+                    item.quantityUnit
+                  )}.`,
+                  updatedAt: now,
+                },
+                { merge: true }
+              )
+              if (import.meta.env.DEV) {
+                console.log(`[SmartPantry] Resolved low-stock alert ${alertId} for ${item.name} after replenishment`)
+              }
+            }
+          } catch (err) {
+            if (import.meta.env.DEV) {
+              console.warn('[SmartPantry] Replenishment alert resolution error:', err)
+            }
           }
         }
       }

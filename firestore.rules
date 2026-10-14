@@ -22,7 +22,11 @@ service cloud.firestore {
         )
         && request.resource.data.id is string
         && request.resource.data.containerId == 'container-01'
-        && request.resource.data.trackingMethod == 'load-cell';
+        && request.resource.data.trackingMethod == 'load-cell'
+        && (
+          !('minStockThreshold' in request.resource.data) ||
+          (request.resource.data.minStockThreshold is number && request.resource.data.minStockThreshold >= 0)
+        );
     }
 
     // Canonical pantry items collection
@@ -46,8 +50,13 @@ service cloud.firestore {
         && (request.resource.data.activeItemId == null || request.resource.data.activeItemId is string);
     }
 
-    // User alerts for freshness and system notifications
+    // User alerts for freshness, low stock, and system notifications
     match /users/{userId}/alerts/{alertId} {
+      allow read, write: if ownsUserData(userId);
+    }
+
+    // Phase 8 Shopping list items
+    match /users/{userId}/shoppingList/{itemId} {
       allow read, write: if ownsUserData(userId);
     }
 

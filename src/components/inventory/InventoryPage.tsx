@@ -4,6 +4,7 @@ import { useInventory } from '../../context/useInventory'
 import { useSensors } from '../../context/useSensors'
 import type { PantryItem, PantryItemInput } from '../../types/inventory'
 import { getExpiryStatus } from '../../utils/expiry'
+import { evaluateStockStatus, formatQuantityWithUnit } from '../../utils/lowStock'
 import { formatWeightDisplay } from '../../utils/sensorCalculations'
 import { PanelState } from '../ui/PanelState'
 import { StatusBadge } from '../ui/StatusBadge'
@@ -197,6 +198,26 @@ export function InventoryPage() {
               </dd>
             </div>
             <div>
+              <dt>Restock threshold</dt>
+              <dd>
+                {selected.minStockThreshold !== undefined ? (
+                  <>
+                    <strong>
+                      {selected.minStockThreshold} {selected.quantityUnit}
+                    </strong>
+                    <small>Custom threshold configured for this item</small>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      {selected.quantityUnit === 'kg' ? '0.50 kg' : '500 g'}
+                    </span>
+                    <small>Default threshold (0.5 kg / 500 g fallback)</small>
+                  </>
+                )}
+              </dd>
+            </div>
+            <div>
               <dt>Tracking method</dt>
               <dd>
                 Load cell (HX711)
@@ -298,8 +319,31 @@ export function InventoryPage() {
                 {activeItem.category} · {activeItem.containerId} · Baseline: {activeItem.initialQuantity}{' '}
                 {activeItem.quantityUnit}
                 {currentState
-                  ? ` · Live: ${formatWeightDisplay(netFoodWeightGrams, 'kg')} (load cell)`
+                  ? ` · Live: ${formatWeightDisplay(netFoodWeightGrams, 'kg')}`
                   : ''}
+                {` · Min: ${formatQuantityWithUnit(
+                  evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).thresholdGrams,
+                  activeItem.quantityUnit
+                )}`}
+                {evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).isLowStock && (
+                  <span
+                    style={{
+                      marginLeft: '6px',
+                      color:
+                        evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).stockStatus ===
+                        'out-of-stock'
+                          ? '#c54545'
+                          : '#b45309',
+                      fontWeight: 700,
+                    }}
+                  >
+                    ·{' '}
+                    {evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).stockStatus ===
+                    'out-of-stock'
+                      ? 'Out of stock'
+                      : 'Low stock'}
+                  </span>
+                )}
               </span>
             </div>
             <div className="inventory-quantity" style={{ minWidth: '180px' }}>

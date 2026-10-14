@@ -1,6 +1,6 @@
-export type AlertType = 'expiry' | 'system' | 'sensor'
+export type AlertType = 'expiry' | 'system' | 'sensor' | 'low-stock'
 export type AlertSeverity = 'info' | 'warning' | 'critical'
-export type AlertStatus = 'active' | 'read'
+export type AlertStatus = 'active' | 'read' | 'resolved'
 
 export interface PantryAlert {
   id: string

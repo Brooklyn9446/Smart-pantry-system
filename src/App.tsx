@@ -14,7 +14,9 @@ import { InventoryProvider } from './context/InventoryContext'
 import { PredictionProvider } from './context/PredictionContext'
 import { QuantityHistoryProvider } from './context/QuantityHistoryContext'
 import { SensorProvider } from './context/SensorContext'
+import { ShoppingListProvider } from './context/ShoppingListContext'
 import { useAlerts } from './context/useAlerts'
+import { ShoppingListPage } from './components/shopping/ShoppingListPage'
 
 type PageSlug =
   | 'overview'
@@ -22,15 +24,20 @@ type PageSlug =
   | 'live-monitoring'
   | 'expiry-tracker'
   | 'ml-predictions'
+  | 'shopping-list'
   | 'alerts'
 
 function getPage(): PageSlug {
   const hash = window.location.hash.replace('#', '')
+  if (hash === 'storage-conditions') {
+    return 'live-monitoring'
+  }
   if (
     hash === 'inventory' ||
     hash === 'live-monitoring' ||
     hash === 'expiry-tracker' ||
     hash === 'ml-predictions' ||
+    hash === 'shopping-list' ||
     hash === 'alerts'
   ) {
     return hash
@@ -54,22 +61,26 @@ export default function App() {
           <QuantityHistoryProvider>
             <PredictionProvider>
               <AlertProvider>
-                <div className="app-shell">
-                  <Sidebar activePage={page} />
-                  {page === 'inventory' ? (
-                    <InventoryPage />
-                  ) : page === 'live-monitoring' ? (
-                    <LiveMonitoringPage />
-                  ) : page === 'expiry-tracker' ? (
-                    <ExpiryTrackerPage />
-                  ) : page === 'ml-predictions' ? (
-                    <MLPredictionsPage />
-                  ) : page === 'alerts' ? (
-                    <AlertsPage />
-                  ) : (
-                    <Dashboard />
-                  )}
-                </div>
+                <ShoppingListProvider>
+                  <div className="app-shell">
+                    <Sidebar activePage={page} />
+                    {page === 'inventory' ? (
+                      <InventoryPage />
+                    ) : page === 'live-monitoring' ? (
+                      <LiveMonitoringPage />
+                    ) : page === 'expiry-tracker' ? (
+                      <ExpiryTrackerPage />
+                    ) : page === 'ml-predictions' ? (
+                      <MLPredictionsPage />
+                    ) : page === 'shopping-list' ? (
+                      <ShoppingListPage />
+                    ) : page === 'alerts' ? (
+                      <AlertsPage />
+                    ) : (
+                      <Dashboard />
+                    )}
+                  </div>
+                </ShoppingListProvider>
               </AlertProvider>
             </PredictionProvider>
           </QuantityHistoryProvider>

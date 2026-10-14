@@ -215,10 +215,11 @@ describe('Phase 6: Consumption & Refill Tracking Algorithms', () => {
     })
 
     it('formats points for Recharts correctly', () => {
+      const refNow = new Date('2026-10-07T12:00:00.000Z')
       const readings: SensorReading[] = [
         makeReading('r1', 2450.3, '2026-10-07T10:00:00.000Z'),
       ]
-      const points = formatHistoryPoints(readings, '24h')
+      const points = formatHistoryPoints(readings, '24h', refNow)
       expect(points).toHaveLength(1)
       expect(points[0].weightGrams).toBe(2450.3)
       expect(points[0].timeFormatted).toBeDefined()

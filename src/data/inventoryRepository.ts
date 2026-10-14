@@ -117,6 +117,14 @@ function toItem(id: string, data: DocumentData): PantryItem {
   const rawUnit = data.quantityUnit ?? data.unit
   const unit: QuantityUnit = rawUnit === 'g' || rawUnit === 'kg' ? rawUnit : 'kg'
   const expiry = normalizeExpiryDate(data.expiryDate)
+  const minThreshold =
+    typeof data.minStockThreshold === 'number' &&
+    !Number.isNaN(data.minStockThreshold) &&
+    data.minStockThreshold >= 0
+      ? data.minStockThreshold
+      : typeof data.minThreshold === 'number' && !Number.isNaN(data.minThreshold) && data.minThreshold >= 0
+      ? data.minThreshold
+      : undefined
 
   return {
     id,
@@ -125,6 +133,7 @@ function toItem(id: string, data: DocumentData): PantryItem {
     initialQuantity: qty >= 0 ? qty : 0,
     quantityUnit: unit,
     ...(expiry ? { expiryDate: expiry } : {}),
+    ...(minThreshold !== undefined ? { minStockThreshold: minThreshold } : {}),
     containerId: CONTAINER_ID,
     trackingMethod: TRACKING_METHOD,
     createdAt: normalizeDate(data.createdAt),
@@ -138,14 +147,32 @@ function makeItem(
   existing?: PantryItem
 ): PantryItem {
   const now = new Date().toISOString()
-  return {
-    ...input,
+  const item: PantryItem = {
     id,
+    name: input.name,
+    category: input.category,
+    initialQuantity: input.initialQuantity,
+    quantityUnit: input.quantityUnit,
     containerId: CONTAINER_ID,
     trackingMethod: TRACKING_METHOD,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
+
+  if (input.expiryDate) {
+    item.expiryDate = input.expiryDate
+  }
+  if (
+    typeof input.minStockThreshold === 'number' &&
+    !Number.isNaN(input.minStockThreshold) &&
+    input.minStockThreshold >= 0
+  ) {
+    item.minStockThreshold = input.minStockThreshold
+  } else if (!('minStockThreshold' in input) && existing?.minStockThreshold !== undefined) {
+    item.minStockThreshold = existing.minStockThreshold
+  }
+
+  return item
 }
 
 function mapFirestoreError(error: unknown): Error {

@@ -1,6 +1,8 @@
 import { useInventory } from '../../context/useInventory'
 import { useSensors } from '../../context/useSensors'
+import { useShoppingList } from '../../context/useShoppingList'
 import { getExpiryStatus } from '../../utils/expiry'
+import { evaluateStockStatus } from '../../utils/lowStock'
 import {
   formatHumidity,
   formatTemperature,
@@ -10,6 +12,7 @@ import {
 export function SummaryCards() {
   const { items } = useInventory()
   const { currentState, netFoodWeightGrams, deviceStatus } = useSensors()
+  const { toBuyCount } = useShoppingList()
 
   const expiringOrExpired = items.filter((item) => {
     const { status } = getExpiryStatus(item.expiryDate)
@@ -32,15 +35,20 @@ export function SummaryCards() {
 
   const hasSensor = currentState !== null
   const activeItem = items[0]
+  const stockEval = activeItem
+    ? evaluateStockStatus(activeItem, hasSensor ? netFoodWeightGrams : null)
+    : null
 
   const metrics = [
     {
       label: 'Tracked items',
       value: String(items.length),
       detail: items.length
-        ? `${items[0].name} in container-01`
+        ? stockEval?.isLowStock
+          ? `${items[0].name} (Low stock) · ${toBuyCount} to buy`
+          : `${items[0].name} in container-01 · ${toBuyCount} to buy`
         : 'container-01 empty',
-      tone: 'teal' as const,
+      tone: stockEval?.isLowStock ? ('amber' as const) : ('teal' as const),
     },
     {
       label: 'Expiring soon / Expired',
@@ -52,9 +60,11 @@ export function SummaryCards() {
       label: 'Live stock weight',
       value: hasSensor ? formatWeightDisplay(netFoodWeightGrams, 'kg') : '—',
       detail: hasSensor
-        ? `${activeItem ? activeItem.name + ' · ' : ''}HX711 load cell (${deviceStatus})`
+        ? `${activeItem ? activeItem.name + ' · ' : ''}${
+            stockEval?.isLowStock ? 'Low stock alert' : `HX711 load cell (${deviceStatus})`
+          }`
         : 'Waiting for sensor data',
-      tone: hasSensor ? ('teal' as const) : ('rose' as const),
+      tone: hasSensor ? (stockEval?.isLowStock ? ('amber' as const) : ('teal' as const)) : ('rose' as const),
     },
     {
       label: 'Pantry climate',

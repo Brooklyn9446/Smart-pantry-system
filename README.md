@@ -1,6 +1,6 @@
-# Smart Pantry Monitoring System — Phase 7 (ML Depletion Prediction)
+# Smart Pantry Monitoring System — Phase 8 (Low-Stock/Restock Alerts & Shopping List)
 
-A real-time smart pantry inventory, environmental monitoring, consumption tracking, and machine-learning depletion prediction platform combining **ESP32 microcontroller hardware**, **HX711 load cell weight sensing**, **DHT22 climate tracking**, a **trusted Node.js/Express ingestion pipeline**, a **Python FastAPI + scikit-learn ML microservice**, and a **React + TypeScript dashboard backed by Cloud Firestore**.
+A real-time smart pantry inventory, environmental monitoring, consumption tracking, machine-learning depletion prediction, low-stock alert, and shopping list platform combining **ESP32 microcontroller hardware**, **HX711 load cell weight sensing**, **DHT22 climate tracking**, a **trusted Node.js/Express ingestion pipeline**, a **Python FastAPI + scikit-learn ML microservice**, and a **React + TypeScript dashboard backed by Cloud Firestore**.
 
 ---
 
@@ -289,7 +289,43 @@ npm run dev
 
 ---
 
-## 11. Phase Scope & Constraints
+## 11. Phase 8: Low-Stock Alerts, Restock Triggers & Shopping List
+
+Phase 8 introduces proactive inventory replenishment and grocery management:
+
+1. **Configurable Minimum Stock Thresholds**:
+   - Each pantry item supports a configurable minimum stock threshold (`minStockThreshold`) in the item's preferred unit (`kg` or `g`).
+   - Sensible backward-compatible defaults: `0.5 kg` (500 g) if unspecified.
+   - Validated on the client, in repositories, and strictly enforced in `firestore.rules` (`minStockThreshold >= 0`).
+
+2. **Automatic Low-Stock Identification**:
+   - Evaluates current container stock against the item's threshold.
+   - Uses authoritative real-time sensor weight from the HX711 load cell when online, with fallback to initial manual baseline.
+   - Differentiates between normal stock, low stock ($W \le \text{Threshold}$), and empty / out-of-stock ($W = 0\text{g}$).
+
+3. **Deduplicated Alert Generation & Auto-Resolution**:
+   - Generates deterministic, item-keyed alert IDs (`low_stock_${itemId}`).
+   - Avoids duplicate notifications while condition persists.
+   - Automatically marks alerts as `resolved` when the container is refilled above threshold, updating the alert message with the replenished weight.
+   - Reactivates resolved alerts if the container is subsequently depleted below threshold again.
+
+4. **Interactive Restock Shopping List (`#shopping-list`)**:
+   - **Automatic Addition**: Low-stock pantry items are automatically synced to the shopping list with deficit-based target reorder quantities.
+   - **Manual Items**: Add custom grocery and household items with categories, target quantities, and notes.
+   - **Purchase Tracking**: Toggle items as purchased (with line-through styling and completion timestamps).
+   - **Item Management**: Individual deletion and bulk "Clear Purchased" operations.
+   - **Filter Views**: `To Buy`, `All Items`, and `Purchased`.
+   - **ML Depletion Integration**: Auto-added items display real-time ML forecast badges with estimated remaining days and burn rate.
+
+5. **Dashboard & Sidebar Integration**:
+   - Summary cards highlight low-stock items in amber and show active shopping list items to buy.
+   - Live stock weight metric card displays low-stock warning and configured threshold.
+   - Recent activity list shows low-stock and resolved alert states.
+   - Sidebar navigation badges display real-time counts for unread alerts and items to buy.
+
+---
+
+## 12. Phase Scope & Completed Milestones
 
 - **Phase 7 Scope Completed**: Refill-aware ML depletion linear regression, rate calculation, days remaining forecasting, confidence scoring, Recharts trajectory visualization, model diagnostics, and Python FastAPI microservice.
-- **Phase 8 Scope**: Automated restock alerts, grocery shopping list generation, and reorder trigger thresholds are intentionally excluded from this phase and will be implemented in Phase 8.
+- **Phase 8 Scope Completed**: Configurable item stock thresholds, automatic low-stock detection, deduplicated alerts, automatic resolution on restock, interactive shopping list with manual & auto item addition, purchased tracking, dashboard indicators, and Firestore persistence with security rules.

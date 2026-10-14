@@ -190,11 +190,12 @@ export function filterReadingsByRange(
  */
 export function formatHistoryPoints(
   readings: SensorReading[],
-  range: TimeRangeFilter = '24h'
+  range: TimeRangeFilter = '24h',
+  now: Date = new Date()
 ): QuantityHistoryPoint[] {
   if (!readings || readings.length === 0) return []
 
-  const filtered = filterReadingsByRange(readings, range)
+  const filtered = filterReadingsByRange(readings, range, now)
   const valid = filtered.filter(
     (r) => r && typeof r.measuredWeight === 'number' && !Number.isNaN(r.measuredWeight)
   )

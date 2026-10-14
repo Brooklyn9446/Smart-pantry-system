@@ -1,5 +1,6 @@
 import { useAlerts } from '../../context/useAlerts'
 import { useSensors } from '../../context/useSensors'
+import { useShoppingList } from '../../context/useShoppingList'
 
 const navigationItems = [
   ['Overview', '⌂', 'overview'],
@@ -7,6 +8,7 @@ const navigationItems = [
   ['Live Monitoring', '⌁', 'live-monitoring'],
   ['Expiry Tracker', '◷', 'expiry-tracker'],
   ['ML Predictions', '✦', 'ml-predictions'],
+  ['Shopping List', '🛒', 'shopping-list'],
   ['Storage Conditions', '♧', 'storage-conditions'],
   ['Alerts', '◉', 'alerts'],
   ['Settings', '⚙', 'settings'],
@@ -14,6 +16,7 @@ const navigationItems = [
 
 export function Sidebar({ activePage }: { activePage: string }) {
   const { unreadCount } = useAlerts()
+  const { toBuyCount } = useShoppingList()
   const { deviceStatus, timeAgoFormatted } = useSensors()
 
   const dotColor =
@@ -83,6 +86,23 @@ export function Sidebar({ activePage }: { activePage: string }) {
                   }}
                 >
                   {unreadCount}
+                </span>
+              )}
+              {slug === 'shopping-list' && toBuyCount > 0 && (
+                <span
+                  style={{
+                    background: '#0d9488',
+                    color: '#fff',
+                    borderRadius: '999px',
+                    padding: '1px 6px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    width: 'auto',
+                    minWidth: '18px',
+                    lineHeight: '16px',
+                  }}
+                >
+                  {toBuyCount}
                 </span>
               )}
             </a>
