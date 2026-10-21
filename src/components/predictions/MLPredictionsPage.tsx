@@ -29,7 +29,7 @@ export function MLPredictionsPage() {
   const { currentState, netFoodWeightGrams } = useSensors()
   const { prediction, isLoading, error, refresh } = usePrediction()
 
-  const activeItem = items[0]
+  const activeItem = items.find((i) => i.containerId === 'container-01')
 
   // Prepare combined historical + projected chart data
   const chartData = useMemo(() => {

@@ -7,6 +7,8 @@
     "dev": "vite --configLoader runner",
     "server": "tsx server/index.ts",
     "simulate:sensor": "tsx scripts/simulateSensor.ts",
+    "simulate:action": "tsx scripts/simulateTakeAndRefill.ts",
+    "simulate:climate": "tsx scripts/simulateClimate.ts",
     "ml:server": "python -m uvicorn app.main:app --app-dir ml-service --port 8000",
     "ml:test": "python -m pytest ml-service/tests",
     "test": "vitest run",
@@ -19,6 +21,7 @@
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "firebase": "^10.14.1",
+    "firebase-admin": "^14.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.13.3"

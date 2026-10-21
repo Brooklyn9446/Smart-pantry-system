@@ -23,6 +23,8 @@ export function InventoryForm({ item, onSave, onCancel }: Props) {
     quantityUnit: item?.quantityUnit ?? 'kg',
     expiryDate: item?.expiryDate ?? '',
     minStockThreshold: item?.minStockThreshold,
+    containerId: item?.containerId ?? null,
+    trackingMethod: item?.trackingMethod ?? (item?.containerId ? 'load-cell' : 'manual'),
   })
   const [errors, setErrors] = useState<PantryItemFormErrors>({})
   const [isSaving, setIsSaving] = useState(false)
@@ -34,9 +36,12 @@ export function InventoryForm({ item, onSave, onCancel }: Props) {
     if (!Object.keys(nextErrors).length) {
       setIsSaving(true)
       try {
+        const assignedContainer = values.containerId && values.containerId.trim() ? values.containerId.trim() : null
         await onSave({
           ...values,
           name: values.name.trim(),
+          containerId: assignedContainer,
+          trackingMethod: assignedContainer === 'container-01' ? 'load-cell' : 'manual',
           expiryDate: values.expiryDate || undefined,
           minStockThreshold:
             typeof values.minStockThreshold === 'number' && !Number.isNaN(values.minStockThreshold) && values.minStockThreshold >= 0
@@ -131,13 +136,26 @@ export function InventoryForm({ item, onSave, onCancel }: Props) {
           />
         </label>
       </div>
-      <div className="assignment-note">
-        <span aria-hidden="true">⌁</span>
-        <div>
-          <strong>Container assignment</strong>
-          <p><code>container-01</code> · Load cell tracking</p>
-          <small>The initial quantity is recorded manually. Sensor-measured quantity will be available after the hardware integration phase.</small>
-        </div>
+      <div className="form-grid" style={{ marginTop: '0.75rem' }}>
+        <label>
+          Container assignment
+          <select
+            value={values.containerId ?? ''}
+            onChange={(event) => {
+              const val = event.target.value
+              update('containerId', val || null)
+              update('trackingMethod', val === 'container-01' ? 'load-cell' : 'manual')
+            }}
+          >
+            <option value="">Unassigned (Manual tracking)</option>
+            <option value="container-01">container-01 (IoT load-cell)</option>
+          </select>
+          <span className="label-hint">
+            {values.containerId === 'container-01'
+              ? 'Connected to IoT load-cell for automated weight telemetry.'
+              : 'Tracked manually with baseline quantity. Can be assigned to a container at any time.'}
+          </span>
+        </label>
       </div>
       <div className="form-actions">
         <button className="secondary-button" type="button" onClick={onCancel} disabled={isSaving}>Cancel</button>

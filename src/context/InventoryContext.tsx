@@ -56,7 +56,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         if (source === 'local') {
           setItems(await inventoryRepository.getAll(userId ?? undefined))
         }
-        setSuccessMessage(`${item.name} was added to container-01.`)
+        setSuccessMessage(`${item.name} was added.`)
         return item
       } catch (reason) {
         const message = reason instanceof Error ? reason.message : 'Unable to add item.'
@@ -87,6 +87,30 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     [userId, source]
   )
 
+  const assignItem = useCallback(
+    async (id: string, containerId: string | null) => {
+      setError(null)
+      setSuccessMessage(null)
+      try {
+        const item = await inventoryRepository.assignItem(id, containerId, userId ?? undefined)
+        if (source === 'local') {
+          setItems(await inventoryRepository.getAll(userId ?? undefined))
+        }
+        setSuccessMessage(
+          containerId
+            ? `${item.name} assigned to ${containerId}.`
+            : `${item.name} unassigned from container.`
+        )
+        return item
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : 'Unable to assign item.'
+        setError(message)
+        throw reason
+      }
+    },
+    [userId, source]
+  )
+
   const deleteItem = useCallback(
     async (id: string) => {
       setError(null)
@@ -96,7 +120,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         if (source === 'local') {
           setItems(await inventoryRepository.getAll(userId ?? undefined))
         }
-        setSuccessMessage('Item was removed from container-01.')
+        setSuccessMessage('Item was removed from inventory.')
       } catch (reason) {
         const message = reason instanceof Error ? reason.message : 'Unable to remove item.'
         setError(message)
@@ -115,10 +139,11 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       source,
       addItem,
       updateItem,
+      assignItem,
       deleteItem,
       clearFeedback,
     }),
-    [items, isLoading, error, successMessage, source, addItem, updateItem, deleteItem, clearFeedback]
+    [items, isLoading, error, successMessage, source, addItem, updateItem, assignItem, deleteItem, clearFeedback]
   )
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>

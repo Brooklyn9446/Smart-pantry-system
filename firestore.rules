@@ -21,8 +21,16 @@ service cloud.firestore {
           (request.resource.data.quantity is number && request.resource.data.quantity >= 0)
         )
         && request.resource.data.id is string
-        && request.resource.data.containerId == 'container-01'
-        && request.resource.data.trackingMethod == 'load-cell'
+        && (
+          !('containerId' in request.resource.data) ||
+          request.resource.data.containerId == null ||
+          request.resource.data.containerId is string
+        )
+        && (
+          !('trackingMethod' in request.resource.data) ||
+          request.resource.data.trackingMethod == null ||
+          request.resource.data.trackingMethod in ['load-cell', 'manual']
+        )
         && (
           !('minStockThreshold' in request.resource.data) ||
           (request.resource.data.minStockThreshold is number && request.resource.data.minStockThreshold >= 0)
@@ -44,9 +52,13 @@ service cloud.firestore {
     // Container metadata lock
     match /users/{userId}/containers/{containerId} {
       allow read: if ownsUserData(userId);
-      allow write: if ownsUserData(userId) && containerId == 'container-01'
-        && request.resource.data.id == 'container-01' 
-        && request.resource.data.trackingMethod == 'load-cell'
+      allow write: if ownsUserData(userId)
+        && request.resource.data.id == containerId 
+        && (
+          !('trackingMethod' in request.resource.data) ||
+          request.resource.data.trackingMethod == null ||
+          request.resource.data.trackingMethod in ['load-cell', 'manual']
+        )
         && (request.resource.data.activeItemId == null || request.resource.data.activeItemId is string);
     }
 

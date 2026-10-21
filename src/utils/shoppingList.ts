@@ -49,7 +49,7 @@ export function createAutoLowStockShoppingItem(
     quantityUnit: item.quantityUnit,
     source: 'auto-low-stock',
     itemId: item.id,
-    containerId: item.containerId,
+    containerId: item.containerId || undefined,
     isPurchased: false,
     createdAt: now,
     updatedAt: now,
@@ -70,7 +70,8 @@ export function syncLowStockToShoppingList(
   let addedCount = 0
 
   for (const item of pantryItems) {
-    const evaluation = evaluateStockStatus(item, measuredGrams)
+    const itemMeasuredGrams = item.containerId === 'container-01' ? measuredGrams : null
+    const evaluation = evaluateStockStatus(item, itemMeasuredGrams)
     if (!evaluation.isLowStock) continue
 
     // Check if item is already in active shopping list

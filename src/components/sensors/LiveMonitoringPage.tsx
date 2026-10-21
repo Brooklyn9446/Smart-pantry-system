@@ -28,7 +28,7 @@ export function LiveMonitoringPage() {
   const [tareInput, setTareInput] = useState<string>(String(tareWeightGrams))
   const [tareSavedMessage, setTareSavedMessage] = useState<string | null>(null)
 
-  const activeItem = items[0]
+  const activeItem = items.find((i) => i.containerId === 'container-01')
 
   const handleSaveTare = (e: React.FormEvent) => {
     e.preventDefault()

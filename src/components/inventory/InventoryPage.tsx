@@ -21,6 +21,7 @@ export function InventoryPage() {
     source,
     addItem,
     updateItem,
+    assignItem,
     deleteItem,
     clearFeedback,
   } = useInventory()
@@ -62,7 +63,7 @@ export function InventoryPage() {
     return (
       <InventoryWorkspace
         title={selected ? 'Edit pantry item' : 'Add pantry item'}
-        description="Record the food item currently assigned to your physical pantry container."
+        description="Record pantry inventory items and optionally assign them to physical sensor containers."
       >
         <InventoryFeedback
           error={activeError}
@@ -86,7 +87,7 @@ export function InventoryPage() {
     return (
       <InventoryWorkspace
         title="Remove pantry item"
-        description="This action removes the item assignment from container-01."
+        description="This action removes the item from your pantry inventory."
       >
         <InventoryFeedback
           error={activeError}
@@ -100,7 +101,7 @@ export function InventoryPage() {
           </span>
           <h2 id="delete-heading">Remove {selected.name}?</h2>
           <p>
-            The item will be removed from Cloud Firestore. Container <code>container-01</code> will become available to assign a new item.
+            The item will be removed from Cloud Firestore. {selected.containerId ? <>Container <code>{selected.containerId}</code> will become available to assign a new item.</> : 'This unassigned item will be deleted.'}
           </p>
           <div className="form-actions">
             <button
@@ -134,6 +135,7 @@ export function InventoryPage() {
   }
 
   if (view === 'details' && selected) {
+    const isAssigned = selected.containerId === 'container-01'
     const expiry = getExpiryStatus(selected.expiryDate)
 
     return (
@@ -154,7 +156,15 @@ export function InventoryPage() {
               <h2>{selected.name}</h2>
               <p>{selected.category}</p>
             </div>
-            <span className="assignment-pill">{selected.containerId}</span>
+            <span
+              className="assignment-pill"
+              style={{
+                backgroundColor: isAssigned ? '#ecfdf5' : '#f1f5f9',
+                color: isAssigned ? '#065f46' : '#475569',
+              }}
+            >
+              {isAssigned ? 'container-01 (IoT load-cell)' : 'Unassigned (Manual)'}
+            </span>
           </div>
 
           <dl className="details-grid">
@@ -170,19 +180,26 @@ export function InventoryPage() {
             <div>
               <dt>Sensor measured quantity</dt>
               <dd>
-                {currentState ? (
-                  <>
-                    <span style={{ color: '#13745c', fontWeight: 700 }}>
-                      {formatWeightDisplay(netFoodWeightGrams, 'kg')}
-                    </span>
-                    <small>
-                      Authoritative · HX711 Load Cell ({deviceStatus} · {timeAgoFormatted})
-                    </small>
-                  </>
+                {isAssigned ? (
+                  currentState ? (
+                    <>
+                      <span style={{ color: '#13745c', fontWeight: 700 }}>
+                        {formatWeightDisplay(netFoodWeightGrams, 'kg')}
+                      </span>
+                      <small>
+                        Authoritative · HX711 Load Cell ({deviceStatus} · {timeAgoFormatted})
+                      </small>
+                    </>
+                  ) : (
+                    <>
+                      Waiting for sensor data
+                      <small>HX711 load cell on container-01</small>
+                    </>
+                  )
                 ) : (
                   <>
-                    Waiting for sensor data
-                    <small>HX711 load cell on container-01</small>
+                    <span style={{ color: '#64748b' }}>No physical sensor attached</span>
+                    <small>Item is tracked manually using baseline quantity</small>
                   </>
                 )}
               </dd>
@@ -220,8 +237,50 @@ export function InventoryPage() {
             <div>
               <dt>Tracking method</dt>
               <dd>
-                Load cell (HX711)
-                <small>Single container mode · container-01</small>
+                {isAssigned ? 'Load cell (HX711) · container-01' : 'Manual tracking'}
+                <small>{isAssigned ? 'Hardware container assigned' : 'No container assigned'}</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Container Assignment</dt>
+              <dd>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span>{isAssigned ? 'container-01' : 'None'}</span>
+                  {isAssigned ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      style={{ fontSize: '12px', padding: '2px 8px' }}
+                      onClick={async () => {
+                        try {
+                          const updated = await assignItem(selected.id, null)
+                          setSelected(updated)
+                        } catch {
+                          // Feedback handled in context
+                        }
+                      }}
+                    >
+                      Unassign container
+                    </button>
+                  ) : (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      style={{ fontSize: '12px', padding: '2px 8px' }}
+                      onClick={async () => {
+                        try {
+                          const updated = await assignItem(selected.id, 'container-01')
+                          setSelected(updated)
+                        } catch {
+                          // Feedback handled in context
+                        }
+                      }}
+                    >
+                      Assign to container-01
+                    </button>
+                  )}
+                </div>
+                <small>Physical containers require exclusive item assignment</small>
               </dd>
             </div>
           </dl>
@@ -264,13 +323,12 @@ export function InventoryPage() {
     )
   }
 
-  const activeItem = items[0]
-  const activeExpiry = activeItem ? getExpiryStatus(activeItem.expiryDate) : null
+  const assignedItem = items.find((i) => i.containerId === 'container-01')
 
   return (
     <InventoryWorkspace
       title="Inventory"
-      description="Manage the single item assigned to your smart pantry container."
+      description="Manage items in your smart pantry, track stock levels, and assign IoT containers."
     >
       <InventoryFeedback
         error={activeError}
@@ -293,82 +351,96 @@ export function InventoryPage() {
           <h2>Unable to load inventory</h2>
           <p>{activeError}</p>
         </section>
-      ) : items.length > 0 && activeItem && activeExpiry ? (
-        /* State 3: Existing item */
+      ) : items.length > 0 ? (
+        /* State 3: Existing items list */
         <>
           <div className="inventory-toolbar">
             <div>
-              <strong>1 active container</strong>
-              <span>{activeItem.containerId} · load-cell</span>
+              <strong>{items.length} {items.length === 1 ? 'item' : 'items'} in pantry</strong>
+              <span>
+                {assignedItem
+                  ? `container-01: ${assignedItem.name} (IoT load-cell)`
+                  : 'container-01: Available for assignment'}
+              </span>
             </div>
-            <button
-              className="primary-button"
-              type="button"
-              disabled={true}
-              title="Only 1 container is supported in the current hardware scope"
-            >
-              Container in use
+            <button className="primary-button" type="button" onClick={add}>
+              + Add item
             </button>
           </div>
 
-          <section className="inventory-item-card">
-            <div className="item-monogram">{activeItem.name.charAt(0).toUpperCase()}</div>
-            <div className="inventory-item-main">
-              <strong>{activeItem.name}</strong>
-              <span>
-                {activeItem.category} · {activeItem.containerId} · Baseline: {activeItem.initialQuantity}{' '}
-                {activeItem.quantityUnit}
-                {currentState
-                  ? ` · Live: ${formatWeightDisplay(netFoodWeightGrams, 'kg')}`
-                  : ''}
-                {` · Min: ${formatQuantityWithUnit(
-                  evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).thresholdGrams,
-                  activeItem.quantityUnit
-                )}`}
-                {evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).isLowStock && (
-                  <span
-                    style={{
-                      marginLeft: '6px',
-                      color:
-                        evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).stockStatus ===
-                        'out-of-stock'
-                          ? '#c54545'
-                          : '#b45309',
-                      fontWeight: 700,
-                    }}
+          <div className="inventory-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {items.map((item) => {
+              const isAssigned = item.containerId === 'container-01'
+              const itemExpiry = getExpiryStatus(item.expiryDate)
+              const stockEval = evaluateStockStatus(
+                item,
+                isAssigned && currentState ? netFoodWeightGrams : null
+              )
+
+              return (
+                <section key={item.id} className="inventory-item-card">
+                  <div className="item-monogram">{item.name.charAt(0).toUpperCase()}</div>
+                  <div className="inventory-item-main">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <strong>{item.name}</strong>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          backgroundColor: isAssigned ? '#ecfdf5' : '#f1f5f9',
+                          color: isAssigned ? '#065f46' : '#475569',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {isAssigned ? 'container-01 (IoT load-cell)' : 'Unassigned (Manual)'}
+                      </span>
+                    </div>
+                    <span>
+                      {item.category} · Baseline: {item.initialQuantity} {item.quantityUnit}
+                      {isAssigned && currentState
+                        ? ` · Live: ${formatWeightDisplay(netFoodWeightGrams, 'kg')}`
+                        : ''}
+                      {` · Min: ${formatQuantityWithUnit(stockEval.thresholdGrams, item.quantityUnit)}`}
+                      {stockEval.isLowStock && (
+                        <span
+                          style={{
+                            marginLeft: '6px',
+                            color: stockEval.stockStatus === 'out-of-stock' ? '#c54545' : '#b45309',
+                            fontWeight: 700,
+                          }}
+                        >
+                          · {stockEval.stockStatus === 'out-of-stock' ? 'Out of stock' : 'Low stock'}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="inventory-quantity" style={{ minWidth: '180px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '13px' }}>{itemExpiry.formattedDate}</strong>
+                      <StatusBadge status={itemExpiry.status} />
+                    </div>
+                    <span style={{ fontSize: '11px' }}>{itemExpiry.label}</span>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => openDetails(item)}
                   >
-                    ·{' '}
-                    {evaluateStockStatus(activeItem, currentState ? netFoodWeightGrams : null).stockStatus ===
-                    'out-of-stock'
-                      ? 'Out of stock'
-                      : 'Low stock'}
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="inventory-quantity" style={{ minWidth: '180px' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', alignItems: 'center' }}>
-                <strong style={{ fontSize: '13px' }}>{activeExpiry.formattedDate}</strong>
-                <StatusBadge status={activeExpiry.status} />
-              </div>
-              <span style={{ fontSize: '11px' }}>{activeExpiry.label}</span>
-            </div>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => openDetails(activeItem)}
-            >
-              View details
-            </button>
-          </section>
+                    View details
+                  </button>
+                </section>
+              )
+            })}
+          </div>
         </>
       ) : (
         /* State 4: Genuine Empty inventory */
         <>
           <div className="inventory-toolbar">
             <div>
-              <strong>0 active containers</strong>
-              <span>container-01 · load-cell</span>
+              <strong>0 items in pantry</strong>
+              <span>container-01 · Available for assignment</span>
             </div>
             <button className="primary-button" type="button" onClick={add}>
               + Add item
@@ -379,7 +451,7 @@ export function InventoryPage() {
             <span aria-hidden="true">▦</span>
             <h2>No items in your pantry yet</h2>
             <p>
-              Assign an item to <code>container-01</code> to start building your pantry inventory and tracking expiry status.
+              Add pantry items to track food stock, expiry dates, or assign an item to <code>container-01</code> for live sensor monitoring.
             </p>
             <button className="primary-button" type="button" onClick={add}>
               + Add item
@@ -438,7 +510,7 @@ function InventoryWorkspace({
     <main id="inventory" className="main-content inventory-page">
       <header className="inventory-header">
         <div>
-          <p className="eyebrow">Single-container inventory</p>
+          <p className="eyebrow">Pantry inventory</p>
           <h1>{title}</h1>
           <p className="subtitle">{description}</p>
         </div>

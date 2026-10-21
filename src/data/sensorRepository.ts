@@ -221,6 +221,15 @@ export const sensorRepository = {
     }
 
     const readingsCol = collection(services.db, 'users', userId, 'sensorReadings')
+    let fallbackUnsubscribe: (() => void) | null = null
+    let isCleanedUp = false
+
+    const handleDocs = (docs: Array<{ id: string; data: () => DocumentData }>) => {
+      const list = docs.map((d) => toSensorReading(d.id, d.data()))
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      onUpdate(list.slice(0, limitCount))
+    }
+
     const q = query(
       readingsCol,
       where('containerId', '==', containerId),
@@ -231,22 +240,35 @@ export const sensorRepository = {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const readings = snapshot.docs.map((d) => toSensorReading(d.id, d.data()))
-        onUpdate(readings)
+        handleDocs(snapshot.docs)
       },
       (error) => {
-        // If composite index is missing or building, fall back to non-ordered query
+        if (isCleanedUp) return
+        // If composite index is missing or building, fall back to timestamp-ordered query
+        // Single field ordering by timestamp desc does NOT require a composite index in Firestore!
         if (error.code === 'failed-precondition' || error.code === 'invalid-argument') {
-          const simpleQuery = query(readingsCol, limit(limitCount))
-          return onSnapshot(
-            simpleQuery,
-            (s) => {
-              const list = s.docs.map((d) => toSensorReading(d.id, d.data()))
-              list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-              onUpdate(list)
-            },
-            (fallbackErr) => onError(mapFirestoreError(fallbackErr))
+          const fallbackQuery = query(
+            readingsCol,
+            orderBy('timestamp', 'desc'),
+            limit(Math.max(limitCount * 2, 60))
           )
+          fallbackUnsubscribe = onSnapshot(
+            fallbackQuery,
+            (s) => {
+              const matched = s.docs.filter((d) => {
+                const data = d.data()
+                return !data.containerId || data.containerId === containerId
+              })
+              handleDocs(matched)
+            },
+            (fallbackErr) => {
+              if (import.meta.env.DEV) {
+                console.error('[SmartPantry Sensor] Fallback snapshot error:', fallbackErr)
+              }
+              onError(mapFirestoreError(fallbackErr))
+            }
+          )
+          return
         }
         if (import.meta.env.DEV) {
           console.error('[SmartPantry Sensor] Readings snapshot error:', error.code, error.message)
@@ -255,7 +277,13 @@ export const sensorRepository = {
       }
     )
 
-    return unsubscribe
+    return () => {
+      isCleanedUp = true
+      unsubscribe()
+      if (fallbackUnsubscribe) {
+        fallbackUnsubscribe()
+      }
+    }
   },
 
   async getCurrentState(userId?: string, containerId: string = CONTAINER_ID): Promise<CurrentSensorState | null> {
@@ -292,12 +320,30 @@ export const sensorRepository = {
       if (!services) return readLocalReadings().slice(0, limitCount)
 
       const readingsCol = collection(services.db, 'users', userId, 'sensorReadings')
-      const snapshot = await getDocs(
-        query(readingsCol, where('containerId', '==', containerId), limit(limitCount))
-      )
-      const readings = snapshot.docs.map((d) => toSensorReading(d.id, d.data()))
-      readings.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      return readings
+      try {
+        const snapshot = await getDocs(
+          query(
+            readingsCol,
+            where('containerId', '==', containerId),
+            orderBy('timestamp', 'desc'),
+            limit(limitCount)
+          )
+        )
+        const readings = snapshot.docs.map((d) => toSensorReading(d.id, d.data()))
+        readings.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        return readings
+      } catch (err: unknown) {
+        // Fallback to single-field index (timestamp desc) if composite index is absent
+        const fallbackSnap = await getDocs(
+          query(readingsCol, orderBy('timestamp', 'desc'), limit(Math.max(limitCount * 2, 60)))
+        )
+        const readings = fallbackSnap.docs
+          .map((d) => toSensorReading(d.id, d.data()))
+          .filter((r) => !r.containerId || r.containerId === containerId)
+          .slice(0, limitCount)
+        readings.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        return readings
+      }
     } catch (err) {
       throw mapFirestoreError(err)
     }

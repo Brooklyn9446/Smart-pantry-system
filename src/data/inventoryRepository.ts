@@ -5,6 +5,7 @@ import {
   getDocs,
   onSnapshot,
   runTransaction,
+  setDoc,
   type DocumentData,
   type FirestoreError,
 } from 'firebase/firestore'
@@ -126,6 +127,18 @@ function toItem(id: string, data: DocumentData): PantryItem {
       ? data.minThreshold
       : undefined
 
+  const containerId =
+    typeof data.containerId === 'string' && data.containerId.trim()
+      ? data.containerId.trim()
+      : null
+
+  const trackingMethod =
+    data.trackingMethod === 'load-cell' || data.trackingMethod === 'manual'
+      ? data.trackingMethod
+      : containerId
+      ? 'load-cell'
+      : 'manual'
+
   return {
     id,
     name: typeof data.name === 'string' && data.name.trim() ? data.name : 'Unnamed Item',
@@ -134,8 +147,8 @@ function toItem(id: string, data: DocumentData): PantryItem {
     quantityUnit: unit,
     ...(expiry ? { expiryDate: expiry } : {}),
     ...(minThreshold !== undefined ? { minStockThreshold: minThreshold } : {}),
-    containerId: CONTAINER_ID,
-    trackingMethod: TRACKING_METHOD,
+    containerId,
+    trackingMethod,
     createdAt: normalizeDate(data.createdAt),
     updatedAt: normalizeDate(data.updatedAt),
   }
@@ -147,14 +160,28 @@ function makeItem(
   existing?: PantryItem
 ): PantryItem {
   const now = new Date().toISOString()
+  const containerId =
+    input.containerId !== undefined
+      ? input.containerId
+      : existing?.containerId !== undefined
+      ? existing.containerId
+      : null
+
+  const trackingMethod =
+    input.trackingMethod !== undefined
+      ? input.trackingMethod
+      : containerId
+      ? 'load-cell'
+      : 'manual'
+
   const item: PantryItem = {
     id,
     name: input.name,
     category: input.category,
     initialQuantity: input.initialQuantity,
     quantityUnit: input.quantityUnit,
-    containerId: CONTAINER_ID,
-    trackingMethod: TRACKING_METHOD,
+    containerId,
+    trackingMethod,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -331,8 +358,11 @@ export const inventoryRepository = {
   async create(input: PantryItemInput, userId?: string): Promise<PantryItem> {
     if (!isFirebaseConfigured() || !userId || userId === 'local-user') {
       const items = readLocal()
-      if (items.some((item) => item.containerId === CONTAINER_ID)) {
-        throw new Error('container-01 already has an active item assigned.')
+      if (input.containerId) {
+        const conflict = items.find((item) => item.containerId === input.containerId)
+        if (conflict) {
+          throw new Error(`${input.containerId} already has an active item assigned (${conflict.name}).`)
+        }
       }
       const item = makeItem(input)
       writeLocal([...items, item])
@@ -345,43 +375,47 @@ export const inventoryRepository = {
 
       const item = makeItem(input)
       const itemRef = doc(services.db, 'users', userId, firestorePaths.items, item.id)
-      const containerRef = doc(
-        services.db,
-        'users',
-        userId,
-        firestorePaths.containers,
-        CONTAINER_ID
-      )
 
-      await runTransaction(services.db, async (transaction) => {
-        const containerSnap = await transaction.get(containerRef)
-        if (containerSnap.exists()) {
-          const containerData = containerSnap.data()
-          const activeItemId = containerData?.activeItemId
-          if (activeItemId) {
-            // Verify if the active item actually exists in the canonical items collection
-            const activeItemRef = doc(
-              services.db,
-              'users',
-              userId,
-              firestorePaths.items,
-              activeItemId
-            )
-            const activeItemSnap = await transaction.get(activeItemRef)
-            if (activeItemSnap.exists()) {
-              throw new Error('container-01 already has an active item assigned.')
+      if (item.containerId) {
+        const containerRef = doc(
+          services.db,
+          'users',
+          userId,
+          firestorePaths.containers,
+          item.containerId
+        )
+
+        await runTransaction(services.db, async (transaction) => {
+          const containerSnap = await transaction.get(containerRef)
+          if (containerSnap.exists()) {
+            const containerData = containerSnap.data()
+            const activeItemId = containerData?.activeItemId
+            if (activeItemId && activeItemId !== item.id) {
+              const activeItemRef = doc(
+                services.db,
+                'users',
+                userId,
+                firestorePaths.items,
+                activeItemId
+              )
+              const activeItemSnap = await transaction.get(activeItemRef)
+              if (activeItemSnap.exists()) {
+                throw new Error(`${item.containerId} already has an active item assigned.`)
+              }
             }
           }
-        }
 
-        transaction.set(itemRef, item)
-        transaction.set(containerRef, {
-          id: CONTAINER_ID,
-          activeItemId: item.id,
-          trackingMethod: TRACKING_METHOD,
-          updatedAt: item.updatedAt,
+          transaction.set(itemRef, item)
+          transaction.set(containerRef, {
+            id: item.containerId,
+            activeItemId: item.id,
+            trackingMethod: item.trackingMethod || 'load-cell',
+            updatedAt: item.updatedAt,
+          }, { merge: true })
         })
-      })
+      } else {
+        await setDoc(itemRef, item)
+      }
 
       if (import.meta.env.DEV) {
         console.log(`[SmartPantry] Created item ${item.id} in users/${userId}/items`)
@@ -398,6 +432,14 @@ export const inventoryRepository = {
       const items = readLocal()
       const existing = items.find((item) => item.id === id)
       if (!existing) throw new Error('This pantry item no longer exists.')
+
+      if (input.containerId && input.containerId !== existing.containerId) {
+        const conflict = items.find((item) => item.id !== id && item.containerId === input.containerId)
+        if (conflict) {
+          throw new Error(`${input.containerId} already has an active item assigned (${conflict.name}).`)
+        }
+      }
+
       const item = makeItem(input, id, existing)
       writeLocal(items.map((current) => (current.id === id ? item : current)))
       return item
@@ -411,11 +453,63 @@ export const inventoryRepository = {
       let updated: PantryItem | undefined
 
       await runTransaction(services.db, async (transaction) => {
-        const existing = await transaction.get(itemRef)
-        if (!existing.exists()) {
+        const existingSnap = await transaction.get(itemRef)
+        if (!existingSnap.exists()) {
           throw new Error('This pantry item no longer exists.')
         }
-        updated = makeItem(input, id, toItem(id, existing.data()))
+        const existingItem = toItem(id, existingSnap.data())
+        updated = makeItem(input, id, existingItem)
+
+        const oldContainer = existingItem.containerId
+        const newContainer = updated.containerId
+
+        // READ 1: Check new container if assigning
+        let newContainerRef = null
+        if (newContainer && newContainer !== oldContainer) {
+          newContainerRef = doc(services.db, 'users', userId, firestorePaths.containers, newContainer)
+          const newContainerSnap = await transaction.get(newContainerRef)
+          if (newContainerSnap.exists()) {
+            const activeItemId = newContainerSnap.data()?.activeItemId
+            if (activeItemId && activeItemId !== id) {
+              const activeItemRef = doc(services.db, 'users', userId, firestorePaths.items, activeItemId)
+              const activeItemSnap = await transaction.get(activeItemRef)
+              if (activeItemSnap.exists()) {
+                throw new Error(`${newContainer} already has an active item assigned.`)
+              }
+            }
+          }
+        }
+
+        // READ 2: Check old container if unassigning
+        let oldContainerRef = null
+        let shouldClearOldContainer = false
+        if (oldContainer && oldContainer !== newContainer) {
+          oldContainerRef = doc(services.db, 'users', userId, firestorePaths.containers, oldContainer)
+          const oldContainerSnap = await transaction.get(oldContainerRef)
+          if (oldContainerSnap.exists() && oldContainerSnap.data()?.activeItemId === id) {
+            shouldClearOldContainer = true
+          }
+        }
+
+        // --- ALL WRITES MUST COME AFTER ALL READS ---
+        if (newContainerRef && newContainer) {
+          transaction.set(newContainerRef, {
+            id: newContainer,
+            activeItemId: id,
+            trackingMethod: updated.trackingMethod || 'load-cell',
+            updatedAt: updated.updatedAt,
+          }, { merge: true })
+        }
+
+        if (shouldClearOldContainer && oldContainerRef && oldContainer) {
+          transaction.set(oldContainerRef, {
+            id: oldContainer,
+            activeItemId: null,
+            trackingMethod: 'load-cell',
+            updatedAt: updated.updatedAt,
+          }, { merge: true })
+        }
+
         transaction.set(itemRef, updated)
       })
 
@@ -437,22 +531,41 @@ export const inventoryRepository = {
       if (!services) throw new Error('Firebase service is not initialized.')
 
       const itemRef = doc(services.db, 'users', userId, firestorePaths.items, id)
-      const containerRef = doc(
-        services.db,
-        'users',
-        userId,
-        firestorePaths.containers,
-        CONTAINER_ID
-      )
 
       await runTransaction(services.db, async (transaction) => {
+        // READ 1: Get item to check if it's assigned to a container
+        const itemSnap = await transaction.get(itemRef)
+        const itemData = itemSnap.exists() ? itemSnap.data() : null
+        const containerId = itemData?.containerId
+
+        // READ 2: Get container BEFORE any write operations
+        let containerRef = null
+        let shouldClearContainer = false
+        if (containerId) {
+          containerRef = doc(
+            services.db,
+            'users',
+            userId,
+            firestorePaths.containers,
+            containerId
+          )
+          const containerSnap = await transaction.get(containerRef)
+          if (containerSnap.exists() && containerSnap.data()?.activeItemId === id) {
+            shouldClearContainer = true
+          }
+        }
+
+        // --- ALL WRITES MUST COME AFTER ALL READS ---
         transaction.delete(itemRef)
-        transaction.set(containerRef, {
-          id: CONTAINER_ID,
-          activeItemId: null,
-          trackingMethod: TRACKING_METHOD,
-          updatedAt: new Date().toISOString(),
-        })
+
+        if (shouldClearContainer && containerRef && containerId) {
+          transaction.set(containerRef, {
+            id: containerId,
+            activeItemId: null,
+            trackingMethod: 'load-cell',
+            updatedAt: new Date().toISOString(),
+          }, { merge: true })
+        }
       })
 
       // Also cleanup legacy doc if present
@@ -474,5 +587,20 @@ export const inventoryRepository = {
     } catch (err) {
       throw mapFirestoreError(err)
     }
+  },
+
+  async assignItem(id: string, containerId: string | null, userId?: string): Promise<PantryItem> {
+    const all = await this.getAll(userId)
+    const existing = all.find((item) => item.id === id)
+    if (!existing) throw new Error('This pantry item no longer exists.')
+    return this.update(
+      id,
+      {
+        ...existing,
+        containerId,
+        trackingMethod: containerId ? 'load-cell' : 'manual',
+      },
+      userId
+    )
   },
 }

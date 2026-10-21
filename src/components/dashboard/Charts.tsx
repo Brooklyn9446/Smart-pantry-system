@@ -48,7 +48,7 @@ export function QuantityChart() {
     )
   }
 
-  const activeItem = items[0]
+  const activeItem = items.find((i) => i.containerId === 'container-01')
 
   return (
     <section className="chart-card" aria-labelledby="quantity-title">
@@ -182,26 +182,46 @@ export function ClimateChart() {
 
   // Transform readings into chronological chart points
   const chartData = useMemo(() => {
-    if (readings.length > 0) {
-      const sorted = [...readings]
-        .filter((r) => r.temperature !== undefined && r.humidity !== undefined)
-        .reverse()
-        .slice(-12)
+    const points: Array<{ time: string; temperature: number; humidity: number }> = []
 
-      return sorted.map((r) => {
-        const timeStr = new Date(r.timestamp).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
+    if (readings.length > 0) {
+      const valid = [...readings].filter((r) => r.temperature !== undefined && r.humidity !== undefined)
+      // Take up to 12 most recent readings, then order chronologically for left-to-right plotting
+      const recent = valid.slice(0, 12).reverse()
+      for (const r of recent) {
+        points.push({
+          time: new Date(r.timestamp).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          temperature: r.temperature!,
+          humidity: r.humidity!,
         })
-        return {
-          time: timeStr,
-          temperature: r.temperature,
-          humidity: r.humidity,
+      }
+
+      // If currentState is newer than the newest reading, append it as live point
+      if (currentState && currentState.temperature !== undefined && currentState.humidity !== undefined) {
+        const newestReadingTime = valid.length > 0 ? new Date(valid[0].timestamp).getTime() : 0
+        const currentStateTime = new Date(currentState.lastUpdated).getTime()
+        if (currentStateTime - newestReadingTime > 1500) {
+          points.push({
+            time: new Date(currentState.lastUpdated).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            temperature: currentState.temperature,
+            humidity: currentState.humidity,
+          })
+          if (points.length > 12) {
+            points.shift()
+          }
         }
-      })
+      }
+
+      return points
     }
 
-    if (currentState) {
+    if (currentState && currentState.temperature !== undefined && currentState.humidity !== undefined) {
       const timeStr = new Date(currentState.lastUpdated).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',

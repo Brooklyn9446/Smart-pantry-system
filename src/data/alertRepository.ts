@@ -196,7 +196,7 @@ export const alertRepository = {
             type: 'expiry',
             itemId: item.id,
             itemName: item.name,
-            containerId: item.containerId,
+            containerId: item.containerId || undefined,
             title,
             message,
             severity,
@@ -217,7 +217,7 @@ export const alertRepository = {
               type: 'expiry',
               itemId: item.id,
               itemName: item.name,
-              containerId: item.containerId,
+              containerId: item.containerId || null,
               title,
               message,
               severity,
@@ -248,7 +248,8 @@ export const alertRepository = {
     const now = new Date().toISOString()
 
     for (const item of items) {
-      const evaluation = evaluateStockStatus(item, measuredGrams)
+      const itemMeasuredGrams = item.containerId === 'container-01' ? measuredGrams : null
+      const evaluation = evaluateStockStatus(item, itemMeasuredGrams)
       const alertId = getLowStockAlertId(item.id)
 
       if (evaluation.isLowStock) {
@@ -280,7 +281,7 @@ export const alertRepository = {
               type: 'low-stock',
               itemId: item.id,
               itemName: item.name,
-              containerId: item.containerId,
+              containerId: item.containerId ?? undefined,
               title,
               message,
               severity,
@@ -317,7 +318,7 @@ export const alertRepository = {
                 type: 'low-stock',
                 itemId: item.id,
                 itemName: item.name,
-                containerId: item.containerId,
+                containerId: item.containerId ?? null,
                 title,
                 message,
                 severity,

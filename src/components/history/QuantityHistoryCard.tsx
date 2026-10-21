@@ -27,7 +27,7 @@ export function QuantityHistoryCard() {
   const { currentState, netFoodWeightGrams, timeAgoFormatted } = useSensors()
   const { historyPoints, stats, timeRange, setTimeRange, isLoading } = useQuantityHistory()
 
-  const activeItem = items[0]
+  const activeItem = items.find((i) => i.containerId === 'container-01')
   const ranges: { label: string; value: TimeRangeFilter }[] = [
     { label: '24H', value: '24h' },
     { label: '7D', value: '7d' },

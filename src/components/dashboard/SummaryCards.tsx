@@ -34,7 +34,7 @@ export function SummaryCards() {
   }
 
   const hasSensor = currentState !== null
-  const activeItem = items[0]
+  const activeItem = items.find((i) => i.containerId === 'container-01')
   const stockEval = activeItem
     ? evaluateStockStatus(activeItem, hasSensor ? netFoodWeightGrams : null)
     : null
@@ -44,10 +44,8 @@ export function SummaryCards() {
       label: 'Tracked items',
       value: String(items.length),
       detail: items.length
-        ? stockEval?.isLowStock
-          ? `${items[0].name} (Low stock) · ${toBuyCount} to buy`
-          : `${items[0].name} in container-01 · ${toBuyCount} to buy`
-        : 'container-01 empty',
+        ? `${items.length} total · ${activeItem ? activeItem.name + ' in container-01' : '0 assigned'} · ${toBuyCount} to buy`
+        : '0 items tracked',
       tone: stockEval?.isLowStock ? ('amber' as const) : ('teal' as const),
     },
     {
@@ -58,13 +56,17 @@ export function SummaryCards() {
     },
     {
       label: 'Live stock weight',
-      value: hasSensor ? formatWeightDisplay(netFoodWeightGrams, 'kg') : '—',
-      detail: hasSensor
-        ? `${activeItem ? activeItem.name + ' · ' : ''}${
-            stockEval?.isLowStock ? 'Low stock alert' : `HX711 load cell (${deviceStatus})`
-          }`
+      value: activeItem && hasSensor ? formatWeightDisplay(netFoodWeightGrams, 'kg') : '—',
+      detail: activeItem
+        ? hasSensor
+          ? `${activeItem.name} · ${
+              stockEval?.isLowStock ? 'Low stock alert' : `HX711 load cell (${deviceStatus})`
+            }`
+          : 'Waiting for sensor data'
+        : hasSensor
+        ? 'No item assigned to container'
         : 'Waiting for sensor data',
-      tone: hasSensor ? (stockEval?.isLowStock ? ('amber' as const) : ('teal' as const)) : ('rose' as const),
+      tone: activeItem && stockEval?.isLowStock ? ('amber' as const) : ('teal' as const),
     },
     {
       label: 'Pantry climate',

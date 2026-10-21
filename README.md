@@ -297,24 +297,65 @@ Green Wire  → A+ (Signal +)
 
 ---
 
-## 9. Development Sensor Simulator
+## 9. Development Sensor & Action Simulators
 
-Test the entire ingestion and consumption detection pipeline without physical hardware:
+Test the ingestion pipeline, consumption detection, inventory actions, and climate alert thresholds without physical hardware:
+
+### A. Item Take & Refill Actions (`simulateTakeAndRefill.ts`)
+Preserves live container weight and automatically computes delta ($\Delta W$) to trigger consumption ($\ge 50$g) or refill ($\ge 50$g) events:
 
 ```bash
-# Start backend server
-npm run server
+# Take food/items (e.g. consume 200g of rice)
+node scripts/simulateTakeAndRefill.ts --take 200 --item "Rice"
+# or: npm run simulate:action -- --take 200
 
-# Run automated scenario pattern (baseline -> noise -> consumption -> refill -> consumption)
+# Refill items (e.g. replenish +1500g)
+node scripts/simulateTakeAndRefill.ts --refill 1500 --item "Basmati Rice"
+# or: npm run simulate:action -- --refill 1500
+
+# Run automated multi-action breakfast/lunch/dinner scenario cycle
+node scripts/simulateTakeAndRefill.ts --scenario
+
+# Seed 5-day realistic consumption history for ML prediction & linear regression
+node scripts/simulateTakeAndRefill.ts --seed-history
+
+# Interactive take & refill prompt menu
+node scripts/simulateTakeAndRefill.ts --interactive
+```
+
+### B. Environmental Climate Simulation (`simulateClimate.ts`)
+Simulates DHT22 ambient temperature and humidity variations, triggering UI threshold alerts without altering container inventory weight:
+
+```bash
+# Heatwave / High temperature warning sequence (> 25°C)
+node scripts/simulateClimate.ts --preset heatwave
+
+# Cold storage warning sequence (< 15°C)
+node scripts/simulateClimate.ts --preset cold
+
+# High humidity / mold risk alert sequence (> 65%)
+node scripts/simulateClimate.ts --preset humid
+
+# Arid / low humidity warning (< 35%)
+node scripts/simulateClimate.ts --preset dry
+
+# 24-Hour Diurnal day/night temperature and humidity cycle
+node scripts/simulateClimate.ts --preset diurnal
+
+# Set explicit static climate values
+node scripts/simulateClimate.ts --temp 28.5 --humidity 72.0
+
+# Interactive climate menu
+node scripts/simulateClimate.ts --interactive
+```
+
+### C. Basic Sensor Telemetry Streaming (`simulateSensor.ts`)
+
+```bash
+# Run automated scenario pattern
 npm run simulate:sensor -- --pattern
 
-# Simulate a food consumption of 200g
-npm run simulate:sensor -- --consume 200
-
-# Simulate a pantry refill of 1500g
-npm run simulate:sensor -- --refill 1500
-
-# Continuous streaming
+# Continuous telemetry streaming every 15s
 npm run simulate:sensor
 ```
 
@@ -401,3 +442,32 @@ Phase 8 introduces proactive inventory replenishment and grocery management:
 
 - **Phase 7 Scope Completed**: Refill-aware ML depletion linear regression, rate calculation, days remaining forecasting, confidence scoring, Recharts trajectory visualization, model diagnostics, and Python FastAPI microservice.
 - **Phase 8 Scope Completed**: Configurable item stock thresholds, automatic low-stock detection, deduplicated alerts, automatic resolution on restock, interactive shopping list with manual & auto item addition, purchased tracking, dashboard indicators, and Firestore persistence with security rules.
+- **Phase 9, Task 1 Scope Completed**: Backend Firebase Admin SDK persistence for sensor telemetry with atomic batch writes to `currentSensorState` and `sensorReadings`, strict constant-time device authentication token comparison (`timingSafeEqual`), and graceful in-memory fallback.
+- **Phase 9, Task 2 Scope Completed**: Multiple pantry inventory items decoupled from physical sensor containers, distinct item and container IDs, exclusive single-item hardware container locking (`container-01`), dynamic multi-item UI rendering, and isolated telemetry mapping.
+
+---
+
+## 14. Phase 9, Task 2: Multiple Pantry Items & Container Assignment
+
+Phase 9, Task 2 expands the pantry inventory system to support multiple food items while maintaining strict hardware container association:
+
+1. **Decoupled Inventory Items**:
+   - Pantry items can exist independently of physical IoT containers (`containerId: null` or unassigned).
+   - Unassigned items are tracked manually with initial/baseline quantities, category, unit, expiration date, and minimum stock thresholds.
+
+2. **Distinct Item and Container Identifiers**:
+   - Pantry item IDs are distinct UUIDs (e.g. `9f1d4b68-...`), avoiding conflation with physical container hardware IDs (e.g. `container-01`).
+
+3. **Exclusive Container Assignment**:
+   - `container-01` enforces exclusive assignment: two active items cannot hold assignment to `container-01` simultaneously.
+   - Adding or updating an item with `containerId: 'container-01'` verifies that no other item currently claims `container-01` (checked in both local storage and Cloud Firestore transaction locks).
+   - Unassigning or deleting an item frees `container-01` for assignment by other pantry items.
+
+4. **Sensor Telemetry Isolation**:
+   - Sensor weight telemetry from the HX711 load cell (`container-01`) is mapped exclusively to `container-01` and its actively assigned item.
+   - Unassigned items or items on other containers evaluate stock status against their manual baseline quantities, avoiding false low-stock alerts or incorrect sensor weight mapping.
+
+5. **Firestore Security Rules**:
+   - `users/{userId}/items/{itemId}` allows `containerId` to be `null` or a string, and `trackingMethod` to be `load-cell` or `manual`.
+   - Single-container metadata lock on `users/{userId}/containers/{containerId}` guarantees concurrency protection and user data isolation (`ownsUserData`).
+

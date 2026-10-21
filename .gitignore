@@ -14,3 +14,5 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+*service-account*.json
+*-adminsdk-*.json
