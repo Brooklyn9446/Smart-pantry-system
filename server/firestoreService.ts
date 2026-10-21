@@ -3,6 +3,12 @@ import dotenv from 'dotenv'
 import { getApps, initializeApp, cert, applicationDefault } from 'firebase-admin/app'
 import { getFirestore, type Firestore } from 'firebase-admin/firestore'
 import type { CurrentSensorStateDoc, HistoricalSensorReadingDoc, ValidatedSensorData } from './types'
+import type {
+  ActiveAlertSnapshot,
+  CompactPantryContext,
+  PantryItemSnapshot,
+  SensorTelemetrySnapshot,
+} from './aiTypes.ts'
 
 dotenv.config({ path: '.env.local' })
 dotenv.config()
@@ -237,6 +243,12 @@ export class FirestoreSensorService {
     return { readingId, currentState }
   }
 
+  private inMemoryItems: Map<string, PantryItemSnapshot[]> = new Map()
+
+  setInMemoryItems(userId: string, items: PantryItemSnapshot[]) {
+    this.inMemoryItems.set(userId, items)
+  }
+
   getCurrentState(
     containerId: string = 'container-01',
     userId: string = this.defaultUserId
@@ -254,9 +266,109 @@ export class FirestoreSensorService {
       .slice(0, limit)
   }
 
+  async getPantryContext(
+    userId: string = this.defaultUserId,
+    clientContextFallback?: Partial<CompactPantryContext>
+  ): Promise<CompactPantryContext> {
+    const sensorStateDoc = this.getCurrentState('container-01', userId)
+
+    let sensorSnapshot: SensorTelemetrySnapshot | null = null
+    if (sensorStateDoc) {
+      const isStale = Date.now() - new Date(sensorStateDoc.lastUpdated).getTime() > 5 * 60 * 1000
+      sensorSnapshot = {
+        containerId: sensorStateDoc.containerId,
+        currentWeight: sensorStateDoc.currentWeight,
+        weightUnit: sensorStateDoc.weightUnit || 'g',
+        temperature: sensorStateDoc.temperature,
+        humidity: sensorStateDoc.humidity,
+        lastUpdated: sensorStateDoc.lastUpdated,
+        sensorStatus: sensorStateDoc.sensorStatus,
+        isStale,
+      }
+    }
+
+    // If firestore is available, query actual user items & alerts
+    if (this.mode === 'firestore' && this.db) {
+      try {
+        const itemsSnap = await this.db.collection(`users/${userId}/items`).limit(50).get()
+        const items: PantryItemSnapshot[] = itemsSnap.docs.map((d) => {
+          const data = d.data()
+          return {
+            id: d.id,
+            name: String(data.name || 'Unnamed item'),
+            category: String(data.category || 'Other'),
+            quantity: typeof data.initialQuantity === 'number' ? data.initialQuantity : 0,
+            unit: String(data.quantityUnit || 'g'),
+            expiryDate: typeof data.expiryDate === 'string' ? data.expiryDate : undefined,
+            containerId: typeof data.containerId === 'string' ? data.containerId : null,
+            trackingMethod: typeof data.trackingMethod === 'string' ? data.trackingMethod : 'manual',
+          }
+        })
+
+        // Also fetch current state directly from Firestore if not in memory
+        if (!sensorSnapshot) {
+          const stateDoc = await this.db.doc(`users/${userId}/currentSensorState/container-01`).get()
+          if (stateDoc.exists) {
+            const data = stateDoc.data() as CurrentSensorStateDoc
+            const isStale = Date.now() - new Date(data.lastUpdated).getTime() > 5 * 60 * 1000
+            sensorSnapshot = {
+              containerId: data.containerId,
+              currentWeight: data.currentWeight,
+              weightUnit: data.weightUnit || 'g',
+              temperature: data.temperature,
+              humidity: data.humidity,
+              lastUpdated: data.lastUpdated,
+              sensorStatus: data.sensorStatus,
+              isStale,
+            }
+          }
+        }
+
+        const alertsSnap = await this.db
+          .collection(`users/${userId}/alerts`)
+          .where('status', '==', 'active')
+          .limit(20)
+          .get()
+
+        const activeAlerts: ActiveAlertSnapshot[] = alertsSnap.docs.map((d) => {
+          const data = d.data()
+          return {
+            id: d.id,
+            type: String(data.type || 'alert'),
+            title: String(data.title || ''),
+            message: String(data.message || ''),
+            severity: typeof data.severity === 'string' ? data.severity : undefined,
+          }
+        })
+
+        return {
+          userId,
+          timestamp: new Date().toISOString(),
+          items: items.length > 0 ? items : clientContextFallback?.items || [],
+          sensorState: sensorSnapshot || clientContextFallback?.sensorState || null,
+          activeAlerts,
+        }
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.warn('[FirestoreSensorService] Error loading context from Firestore:', (err as Error).message)
+        }
+      }
+    }
+
+    // Fallback to in-memory or provided fallback data
+    return {
+      userId,
+      timestamp: new Date().toISOString(),
+      items: clientContextFallback?.items || this.inMemoryItems.get(userId) || [],
+      sensorState: sensorSnapshot || clientContextFallback?.sensorState || null,
+      activeAlerts: clientContextFallback?.activeAlerts || [],
+    }
+  }
+
   clear(): void {
     this.inMemoryCurrentState.clear()
     this.inMemoryHistory = []
+    this.inMemoryItems.clear()
   }
 }
 

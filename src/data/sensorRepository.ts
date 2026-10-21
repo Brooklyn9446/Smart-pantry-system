@@ -332,7 +332,7 @@ export const sensorRepository = {
         const readings = snapshot.docs.map((d) => toSensorReading(d.id, d.data()))
         readings.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         return readings
-      } catch (err: unknown) {
+      } catch {
         // Fallback to single-field index (timestamp desc) if composite index is absent
         const fallbackSnap = await getDocs(
           query(readingsCol, orderBy('timestamp', 'desc'), limit(Math.max(limitCount * 2, 60)))

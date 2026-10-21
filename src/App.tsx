@@ -6,7 +6,7 @@ import { SummaryCards } from './components/dashboard/SummaryCards'
 import { ExpiryTrackerPage } from './components/expiry/ExpiryTrackerPage'
 import { InventoryPage } from './components/inventory/InventoryPage'
 import { Sidebar } from './components/layout/Sidebar'
-import { MLPredictionsPage } from './components/predictions/MLPredictionsPage'
+import { AIPantryAssistantPage } from './components/ai/AIPantryAssistantPage'
 import { LiveMonitoringPage } from './components/sensors/LiveMonitoringPage'
 import { AlertProvider } from './context/AlertContext'
 import { AuthProvider } from './context/AuthContext'
@@ -23,6 +23,7 @@ type PageSlug =
   | 'inventory'
   | 'live-monitoring'
   | 'expiry-tracker'
+  | 'ai-assistant'
   | 'ml-predictions'
   | 'shopping-list'
   | 'alerts'
@@ -32,11 +33,14 @@ function getPage(): PageSlug {
   if (hash === 'storage-conditions') {
     return 'live-monitoring'
   }
+  if (hash === 'ml-predictions') {
+    return 'ai-assistant'
+  }
   if (
     hash === 'inventory' ||
     hash === 'live-monitoring' ||
     hash === 'expiry-tracker' ||
-    hash === 'ml-predictions' ||
+    hash === 'ai-assistant' ||
     hash === 'shopping-list' ||
     hash === 'alerts'
   ) {
@@ -70,8 +74,8 @@ export default function App() {
                       <LiveMonitoringPage />
                     ) : page === 'expiry-tracker' ? (
                       <ExpiryTrackerPage />
-                    ) : page === 'ml-predictions' ? (
-                      <MLPredictionsPage />
+                    ) : page === 'ai-assistant' || page === 'ml-predictions' ? (
+                      <AIPantryAssistantPage />
                     ) : page === 'shopping-list' ? (
                       <ShoppingListPage />
                     ) : page === 'alerts' ? (

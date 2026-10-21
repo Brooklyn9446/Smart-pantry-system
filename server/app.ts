@@ -3,9 +3,20 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import cors from 'cors'
 import { validateSensorPayload } from './validator.ts'
 import { FirestoreSensorService, sensorFirestoreService } from './firestoreService.ts'
+import { AICacheAndLimiterService, aiCacheService as defaultAiCacheService } from './aiCacheService.ts'
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      userId?: string
+    }
+  }
+}
 
 export interface CreateAppOptions {
   service?: FirestoreSensorService
+  aiService?: AICacheAndLimiterService
   deviceToken?: string
   allowedDevices?: Set<string>
 }
@@ -138,6 +149,105 @@ export function createApp(options?: CreateAppOptions) {
     const limit = Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 200)
     const history = service.getHistory(containerId, limit)
     res.status(200).json({ success: true, count: history.length, history })
+  })
+
+  // =========================================================================
+  // Gemini-Powered AI Pantry Assistant Endpoints
+  // =========================================================================
+  const ai = options?.aiService || defaultAiCacheService
+
+  // Authenticate user middleware
+  const authenticateUser = (req: Request, _res: Response, next: NextFunction): void => {
+    const userIdHeader = req.headers['x-user-id'] as string | undefined
+    const authHeader = req.headers['authorization']
+    let resolvedUser = userIdHeader?.trim()
+
+    if (!resolvedUser && authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7).trim()
+      if (token && token.length > 0 && token !== expectedToken) {
+        resolvedUser = token
+      }
+    }
+
+    req.userId = resolvedUser || (process.env.PANTRY_USER_ID ? process.env.PANTRY_USER_ID.trim() : 'local-user')
+    next()
+  }
+
+  // 1. GET /api/ai/recommendations - Cache-first retrieval (NEVER invokes Gemini)
+  app.get('/api/ai/recommendations', authenticateUser, (req: Request, res: Response) => {
+    const userId = req.userId!
+    const cached = ai.getCachedAnalysis(userId)
+
+    res.status(200).json({
+      success: true,
+      cached: cached !== null,
+      analysis: cached,
+    })
+  })
+
+  // 2. POST /api/ai/analyze - On-demand analysis request
+  app.post('/api/ai/analyze', authenticateUser, async (req: Request, res: Response) => {
+    const userId = req.userId!
+    const forceFresh = req.body?.forceFresh !== false
+
+    try {
+      const context = await service.getPantryContext(userId, req.body?.clientContextFallback)
+      const { analysis, fromCache, cooldownNotice } = await ai.getOrFetchAnalysis(context, forceFresh)
+
+      res.status(200).json({
+        success: true,
+        analysis,
+        fromCache,
+        cooldownNotice,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to analyze pantry state'
+      const status = message.toLowerCase().includes('rate limit') ? 429 : message.toLowerCase().includes('capacity') ? 503 : 500
+      res.status(status).json({
+        success: false,
+        error: message,
+      })
+    }
+  })
+
+  // 3. POST /api/ai/chat - Interactive conversation with grounded pantry context
+  app.post('/api/ai/chat', authenticateUser, async (req: Request, res: Response) => {
+    const userId = req.userId!
+    const message = req.body?.message
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid request: "message" is required and must be a non-empty string.',
+      })
+      return
+    }
+
+    if (message.length > 1000) {
+      res.status(400).json({
+        success: false,
+        error: 'Message exceeds maximum length of 1000 characters.',
+      })
+      return
+    }
+
+    try {
+      const context = await service.getPantryContext(userId, req.body?.clientContextFallback)
+      const result = await ai.submitChatQuery(context, message.trim(), req.body?.history)
+
+      res.status(200).json({
+        success: true,
+        response: result.response,
+        supporting_facts: result.supporting_facts,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Chat query processing failed'
+      const status = message.toLowerCase().includes('rate limit') ? 429 : 500
+      res.status(status).json({
+        success: false,
+        error: message,
+      })
+    }
   })
 
   return app

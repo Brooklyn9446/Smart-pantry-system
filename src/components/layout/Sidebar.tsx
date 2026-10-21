@@ -7,7 +7,7 @@ const navigationItems = [
   ['Inventory', '▦', 'inventory'],
   ['Live Monitoring', '⌁', 'live-monitoring'],
   ['Expiry Tracker', '◷', 'expiry-tracker'],
-  ['ML Predictions', '✦', 'ml-predictions'],
+  ['AI Assistant', '✦', 'ai-assistant'],
   ['Shopping List', '🛒', 'shopping-list'],
   ['Storage Conditions', '♧', 'storage-conditions'],
   ['Alerts', '◉', 'alerts'],
